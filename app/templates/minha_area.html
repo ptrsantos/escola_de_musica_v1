@@ -1,0 +1,77 @@
+{% extends 'base.html' %}
+
+{% block title %}Minha Área{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+    <h2 class="mb-0">Olá, {{ current_user.nome }}</h2>
+    <p class="text-muted">Consulte sua situação financeira e seu plano de estudo.</p>
+</div>
+
+{% if aluno %}
+<div class="row g-4 mb-4">
+    <div class="col-md-4">
+        <div class="card card-metric shadow-sm h-100">
+            <div class="card-body text-center">
+                <div class="text-primary mb-2"><i class="fas fa-music fa-2x"></i></div>
+                <h5>{{ aluno.instrumento.nome }}</h5>
+                {% if aluno.inadimplente %}
+                <span class="badge text-bg-danger">Inadimplente · R$ {{ "%.2f"|format(aluno.valor_em_aberto)|replace(".", ",") }} em aberto</span>
+                {% else %}
+                <span class="badge text-bg-success">Adimplente</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-8">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-header bg-white"><h5 class="mb-0">Minhas mensalidades</h5></div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-striped mb-0">
+                        <thead class="table-light"><tr><th>Competência</th><th>Vencimento</th><th>Valor</th><th>Situação</th></tr></thead>
+                        <tbody>
+                            {% for m in mensalidades %}
+                            <tr>
+                                <td>{{ m.competencia }}</td>
+                                <td>{{ m.vencimento.strftime('%d/%m/%Y') }}</td>
+                                <td>R$ {{ "%.2f"|format(m.valor)|replace(".", ",") }}</td>
+                                <td><span class="badge text-bg-{{ 'success' if m.status=='pago' else ('danger' if m.status=='em atraso' else 'warning') }}">{{ m.status|capitalize }}</span></td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="4" class="text-muted text-center py-3">Nenhuma mensalidade disponível.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<h4 class="mb-3">Minhas aulas</h4>
+<div class="row g-3">
+    {% for aula in aulas %}
+    <div class="col-md-6">
+        <div class="card shadow-sm border-0">
+            <div class="card-body">
+                <div class="text-muted small">{{ aula.data.strftime('%d/%m/%Y') }} · {{ aula.professora }}</div>
+                <h5 class="mt-2">Observações</h5>
+                <p>{{ aula.observacao or 'Sem observações.' }}</p>
+                <h5>Para estudar</h5>
+                <p class="mb-0">{{ aula.orientacao_estudo or 'Sem orientação.' }}</p>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="col-12"><div class="card shadow-sm border-0"><div class="card-body text-muted text-center py-4">Nenhuma aula registrada.</div></div></div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="card shadow-sm border-0"><div class="card-body text-center py-5">
+    <i class="fas fa-link-slash fa-2x text-secondary mb-3"></i>
+    <h4>Cadastro ainda não vinculado</h4>
+    <p class="text-muted mb-0">Peça à administração para associar seu e-mail ao cadastro de aluno.</p>
+</div></div>
+{% endif %}
+{% endblock %}

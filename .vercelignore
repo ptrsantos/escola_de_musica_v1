@@ -1,0 +1,22 @@
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+
+# Banco de dados local (não usar em produção no Vercel)
+instance/
+*.db
+*.sqlite3
+
+# Variáveis de ambiente locais (configure na dashboard do Vercel)
+.env
+
+# Scripts de diagnóstico/desenvolvimento
+_diag_db.py
+
+# IDE / SO
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,62 @@
+{% extends 'base.html' %}
+
+{% block title %}Acompanhamento{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="mb-0">Acompanhamento Pedagógico</h2>
+        <p class="text-muted mb-0">Registre o que foi trabalhado e os próximos estudos.</p>
+    </div>
+    <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#novaAulaModal">
+        <i class="fas fa-plus me-1"></i>Registrar aula
+    </button>
+</div>
+
+<div class="row g-3">
+    {% for aula in aulas %}
+    <div class="col-md-6">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div><h5 class="mb-1">{{ aula.aluno.nome }}</h5><div class="text-muted small">{{ aula.data.strftime('%d/%m/%Y') }} · {{ aula.professora }}</div></div>
+                    <i class="fas fa-music text-primary"></i>
+                </div>
+                <hr>
+                <div class="small text-uppercase fw-bold text-secondary">Observações da aula</div>
+                <p>{{ aula.observacao or 'Sem observações registradas.' }}</p>
+                <div class="small text-uppercase fw-bold text-secondary">Para estudar</div>
+                <p class="mb-0">{{ aula.orientacao_estudo or 'Nenhuma orientação registrada.' }}</p>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="col-12"><div class="card shadow-sm border-0"><div class="card-body text-center py-5 text-muted">Nenhum acompanhamento registrado.</div></div></div>
+    {% endfor %}
+</div>
+
+<!-- Modal Nova Aula -->
+<div class="modal fade" id="novaAulaModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <form method="POST">
+                <div class="modal-header"><h5 class="modal-title">Registrar aula</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-6"><label class="form-label">Aluno</label>
+                            <select class="form-select" name="aluno_id" required>
+                                {% for aluno in alunos %}<option value="{{ aluno.id }}">{{ aluno.nome }}</option>{% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6"><label class="form-label">Professora</label><input class="form-control" name="professora" value="{{ current_user.nome }}"></div>
+                        <div class="col-md-6"><label class="form-label">Data</label><input type="date" class="form-control" name="data" value="{{ hoje }}" required></div>
+                        <div class="col-12"><label class="form-label">Observações da aula</label><textarea class="form-control" name="observacao" rows="3" placeholder="Conteúdo trabalhado, desempenho e pontos de atenção"></textarea></div>
+                        <div class="col-12"><label class="form-label">O que estudar</label><textarea class="form-control" name="orientacao_estudo" rows="3" placeholder="Exercícios, repertório ou técnica para a próxima aula"></textarea></div>
+                    </div>
+                </div>
+                <div class="modal-footer"><button type="submit" class="btn btn-primary">Salvar acompanhamento</button></div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

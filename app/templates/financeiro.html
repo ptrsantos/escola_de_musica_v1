@@ -1,0 +1,70 @@
+{% extends 'base.html' %}
+
+{% block title %}Mensalidades{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Mensalidades</h2>
+    <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#novaMensalidadeModal">
+        <i class="fas fa-plus me-1"></i>Nova mensalidade
+    </button>
+</div>
+
+<div class="card shadow-sm border-0">
+    <div class="card-header bg-white py-3"><h5 class="mb-0"><i class="fas fa-wallet me-2 text-muted"></i>Controle de cobranças e inadimplência</h5></div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover mb-0">
+                <thead class="table-light"><tr><th>Aluno</th><th>Competência</th><th>Vencimento</th><th>Valor</th><th>Pago</th><th>Status</th><th>Ação</th></tr></thead>
+                <tbody>
+                    {% for m in mensalidades %}
+                    <tr>
+                        <td class="fw-semibold">{{ m.aluno.nome }}</td>
+                        <td>{{ m.competencia }}</td>
+                        <td>{{ m.vencimento.strftime('%d/%m/%Y') }}</td>
+                        <td>R$ {{ "%.2f"|format(m.valor)|replace(".", ",") }}</td>
+                        <td>R$ {{ "%.2f"|format(m.valor_pago)|replace(".", ",") }}</td>
+                        <td><span class="badge text-bg-{{ 'success' if m.status=='pago' else ('danger' if m.status=='em atraso' else 'warning') }}">{{ m.status|capitalize }}</span></td>
+                        <td>
+                            {% if m.status != 'pago' %}
+                            <form class="d-flex gap-1" method="POST" action="{{ url_for('registrar_pagamento', id=m.id) }}">
+                                <input type="hidden" name="valor" value="{{ m.valor - m.valor_pago }}">
+                                <input class="form-control form-control-sm" type="date" name="data_pagamento" value="{{ hoje }}">
+                                <button class="btn btn-sm btn-success" title="Registrar quitação"><i class="fas fa-check"></i></button>
+                            </form>
+                            {% else %}
+                            <span class="text-success"><i class="fas fa-check-circle"></i> Quitada</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="7" class="text-center py-4 text-muted">Nenhuma mensalidade registrada.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Nova Mensalidade -->
+<div class="modal fade" id="novaMensalidadeModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('adicionar_mensalidade') }}">
+                <div class="modal-header"><h5 class="modal-title">Nova mensalidade</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <div class="mb-3"><label class="form-label">Aluno</label>
+                        <select class="form-select" name="aluno_id" required>
+                            {% for aluno in alunos %}<option value="{{ aluno.id }}">{{ aluno.nome }} — {{ aluno.instrumento.nome }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3"><label class="form-label">Competência</label><input type="month" class="form-control" name="competencia" required></div>
+                    <div class="mb-3"><label class="form-label">Valor (R$)</label><input type="number" step="0.01" class="form-control" name="valor" required></div>
+                    <div class="mb-3"><label class="form-label">Vencimento</label><input type="date" class="form-control" name="vencimento" value="{{ hoje }}" required></div>
+                </div>
+                <div class="modal-footer"><button type="submit" class="btn btn-primary">Registrar mensalidade</button></div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

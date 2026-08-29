@@ -1,0 +1,116 @@
+{% extends 'base.html' %}
+
+{% block title %}Alunos{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Alunos</h2>
+    {% if current_user.papel == 'gestora' %}
+    <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#novoAlunoModal">
+        <i class="fas fa-plus me-1"></i>Cadastrar aluno
+    </button>
+    {% endif %}
+</div>
+
+<form class="card shadow-sm border-0 mb-3" method="GET">
+    <div class="card-body">
+        <div class="input-group">
+            <input type="text" class="form-control" name="busca" value="{{ busca }}" placeholder="Pesquisar por nome">
+            <button class="btn btn-outline-secondary" type="submit"><i class="fas fa-search"></i></button>
+        </div>
+    </div>
+</form>
+
+<div class="card shadow-sm border-0">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover mb-0">
+                <thead class="table-light">
+                    <tr><th>Aluno</th><th>Instrumento</th><th>Mensalidade</th><th>Situação</th><th>Risco</th><th>Ações</th></tr>
+                </thead>
+                <tbody>
+                    {% for aluno in alunos %}
+                    <tr>
+                        <td><strong>{{ aluno.nome }}</strong><br><small class="text-muted">{{ aluno.endereco or 'Endereço não informado' }}</small></td>
+                        <td>{{ aluno.instrumento.nome }}</td>
+                        <td>R$ {{ "%.2f"|format(aluno.mensalidade_base)|replace(".", ",") }}</td>
+                        <td>{% if aluno.inadimplente %}<span class="inadimplente">Inadimplente</span>{% else %}<span class="adimplente">Adimplente</span>{% endif %}</td>
+                        <td><span class="badge-risco risco-{{ 'alto' if aluno.risco=='alto' else 'medio' if aluno.risco=='médio' else 'baixo' }}">{{ aluno.risco|capitalize }}</span></td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <a href="{{ url_for('aluno_detalhe', id=aluno.id) }}" class="btn btn-outline-primary" style="color:#7e6ee9" onclick="mostrarSpinner()"><i class="fas fa-eye"></i></a>
+                                {% if current_user.papel == 'gestora' %}
+                                <button type="button" class="btn btn-outline-danger" style="color:#ee6b6b"
+                                        data-bs-toggle="modal" data-bs-target="#deleteModal"
+                                        data-id="{{ aluno.id }}" data-nome="{{ aluno.nome }}"><i class="fas fa-trash"></i></button>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="6" class="text-center py-4 text-muted"><i class="fas fa-box-open fa-2x mb-2"></i><p class="mb-0">Nenhum aluno encontrado.</p></td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% if current_user.papel == 'gestora' %}
+<!-- Modal Novo Aluno -->
+<div class="modal fade" id="novoAlunoModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('adicionar_aluno') }}">
+                <div class="modal-header"><h5 class="modal-title">Novo aluno</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <div class="mb-3"><label class="form-label">Nome completo *</label><input type="text" class="form-control" name="nome" required></div>
+                    <div class="mb-3"><label class="form-label">Instrumento *</label>
+                        <select class="form-select" name="instrumento_id" required>
+                            {% for instrumento in instrumentos %}<option value="{{ instrumento.id }}">{{ instrumento.nome }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="row">
+                        <div class="col-6 mb-3"><label class="form-label">Data de nascimento</label><input type="date" class="form-control" name="data_nascimento"></div>
+                        <div class="col-6 mb-3"><label class="form-label">Mensalidade (R$)</label><input type="number" step="0.01" min="0" class="form-control" name="mensalidade_base" value="0"></div>
+                    </div>
+                    <div class="mb-3"><label class="form-label">E-mail do aluno</label><input type="email" class="form-control" name="email">
+                        <div class="form-text">Vincula o login do aluno à ficha (área do aluno).</div></div>
+                    <div class="mb-3"><label class="form-label">Endereço</label><input type="text" class="form-control" name="endereco"></div>
+                </div>
+                <div class="modal-footer"><button type="submit" class="btn btn-primary">Salvar aluno</button></div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Excluir -->
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title">Confirmar exclusão</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body"><p>Tem certeza que deseja remover o aluno <strong id="aluno-nome"></strong>?</p><p class="text-danger"><small>Esta ação não pode ser desfeita.</small></p></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <form id="delete-form" method="POST"><button type="submit" class="btn btn-danger">Excluir</button></form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const deleteModal = document.getElementById('deleteModal');
+        if (deleteModal) {
+            deleteModal.addEventListener('show.bs.modal', function(event) {
+                const button = event.relatedTarget;
+                document.getElementById('aluno-nome').textContent = button.getAttribute('data-nome');
+                document.getElementById('delete-form').action = '/excluir_aluno/' + button.getAttribute('data-id');
+            });
+        }
+    });
+</script>
+{% endblock %}

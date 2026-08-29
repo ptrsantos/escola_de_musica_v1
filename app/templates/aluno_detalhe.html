@@ -1,0 +1,142 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ aluno.nome }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="mb-0">{{ aluno.nome }}</h2>
+        <p class="text-muted mb-0">{{ aluno.instrumento.nome }}{% if aluno.idade() %} · {{ aluno.idade() }} anos{% endif %}</p>
+    </div>
+    <div>
+        {% if current_user.papel == 'gestora' %}
+        <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#editarAlunoModal"><i class="fas fa-edit me-1"></i>Editar</button>
+        {% endif %}
+        {% if current_user.papel in ['gestora','professora'] %}
+        <a href="{{ url_for('alunos') }}" class="btn btn-outline-primary btn-sm" onclick="mostrarSpinner()"><i class="fas fa-arrow-left me-1"></i>Voltar</a>
+        {% endif %}
+    </div>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-4">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-header bg-white"><h5 class="mb-0">Dados cadastrais</h5></div>
+            <div class="card-body">
+                <dl class="row mb-0 small">
+                    <dt class="col-5">Nascimento</dt><dd class="col-7">{{ aluno.data_nascimento.strftime('%d/%m/%Y') if aluno.data_nascimento else '—' }}</dd>
+                    <dt class="col-5">Endereço</dt><dd class="col-7">{{ aluno.endereco or '—' }}</dd>
+                    <dt class="col-5">E-mail</dt><dd class="col-7">{{ aluno.email or '—' }}</dd>
+                    <dt class="col-5">Instrumento</dt><dd class="col-7">{{ aluno.instrumento.nome }}</dd>
+                    <dt class="col-5">Mensalidade</dt><dd class="col-7">R$ {{ "%.2f"|format(aluno.mensalidade_base)|replace(".", ",") }}</dd>
+                    <dt class="col-5">Status</dt><dd class="col-7">{{ aluno.status|capitalize }}</dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-8">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-header bg-white"><h5 class="mb-0">Situação financeira e risco</h5></div>
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col">
+                        <div class="text-muted small">Situação</div>
+                        {% if aluno.inadimplente %}<span class="inadimplente fw-bold">Inadimplente</span>{% else %}<span class="adimplente fw-bold">Adimplente</span>{% endif %}
+                    </div>
+                    <div class="col">
+                        <div class="text-muted small">Valor em aberto</div>
+                        <strong>R$ {{ "%.2f"|format(aluno.valor_em_aberto)|replace(".", ",") }}</strong>
+                    </div>
+                    <div class="col">
+                        <div class="text-muted small">Risco de evasão</div>
+                        <span class="badge-risco risco-{{ 'alto' if aluno.risco=='alto' else 'medio' if aluno.risco=='médio' else 'baixo' }}">{{ aluno.risco|capitalize }} ({{ aluno.risco_score }})</span>
+                    </div>
+                </div>
+                <hr>
+                <p class="small mb-0"><strong>Fatores de risco:</strong> {{ aluno.risco_motivos|join('; ') }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm border-0 mb-3">
+    <div class="card-header bg-white"><h5 class="mb-0"><i class="fas fa-wallet me-2 text-primary"></i>Histórico de mensalidades</h5></div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-striped mb-0">
+                <thead class="table-light"><tr><th>Competência</th><th>Vencimento</th><th>Valor</th><th>Pago</th><th>Status</th></tr></thead>
+                <tbody>
+                    {% for m in aluno.mensalidades|sort(attribute='vencimento', reverse=true) %}
+                    <tr>
+                        <td>{{ m.competencia }}</td>
+                        <td>{{ m.vencimento.strftime('%d/%m/%Y') }}</td>
+                        <td>R$ {{ "%.2f"|format(m.valor)|replace(".", ",") }}</td>
+                        <td>R$ {{ "%.2f"|format(m.valor_pago)|replace(".", ",") }}</td>
+                        <td><span class="badge text-bg-{{ 'success' if m.status=='pago' else ('danger' if m.status=='em atraso' else 'warning') }}">{{ m.status|capitalize }}</span></td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="5" class="text-center py-3 text-muted">Nenhuma mensalidade registrada.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm border-0">
+    <div class="card-header bg-white"><h5 class="mb-0"><i class="fas fa-book-open me-2 text-primary"></i>Acompanhamento pedagógico</h5></div>
+    <div class="card-body">
+        <div class="row g-3">
+            {% for aula in aluno.aulas|sort(attribute='data', reverse=true) %}
+            <div class="col-md-6">
+                <div class="border rounded p-3 h-100">
+                    <div class="text-muted small">{{ aula.data.strftime('%d/%m/%Y') }} · {{ aula.professora }}</div>
+                    <div class="small text-uppercase fw-bold text-secondary mt-2">Observações</div>
+                    <p class="mb-2">{{ aula.observacao or 'Sem observações.' }}</p>
+                    <div class="small text-uppercase fw-bold text-secondary">Para estudar</div>
+                    <p class="mb-0">{{ aula.orientacao_estudo or 'Sem orientação.' }}</p>
+                </div>
+            </div>
+            {% else %}
+            <div class="col-12"><p class="text-center py-3 text-muted mb-0">Nenhum acompanhamento registrado.</p></div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+{% if current_user.papel == 'gestora' %}
+<!-- Modal Editar Aluno -->
+<div class="modal fade" id="editarAlunoModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('editar_aluno', id=aluno.id) }}">
+                <div class="modal-header"><h5 class="modal-title">Editar aluno</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <div class="mb-3"><label class="form-label">Nome completo *</label><input type="text" class="form-control" name="nome" value="{{ aluno.nome }}" required></div>
+                    <div class="mb-3"><label class="form-label">Instrumento *</label>
+                        <select class="form-select" name="instrumento_id" required>
+                            {% for instrumento in instrumentos %}
+                            <option value="{{ instrumento.id }}" {{ 'selected' if instrumento.id==aluno.instrumento_id else '' }}>{{ instrumento.nome }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="row">
+                        <div class="col-6 mb-3"><label class="form-label">Data de nascimento</label><input type="date" class="form-control" name="data_nascimento" value="{{ aluno.data_nascimento.isoformat() if aluno.data_nascimento else '' }}"></div>
+                        <div class="col-6 mb-3"><label class="form-label">Mensalidade (R$)</label><input type="number" step="0.01" min="0" class="form-control" name="mensalidade_base" value="{{ '%.2f'|format(aluno.mensalidade_base) }}"></div>
+                    </div>
+                    <div class="mb-3"><label class="form-label">E-mail</label><input type="email" class="form-control" name="email" value="{{ aluno.email or '' }}"></div>
+                    <div class="mb-3"><label class="form-label">Endereço</label><input type="text" class="form-control" name="endereco" value="{{ aluno.endereco or '' }}"></div>
+                    <div class="mb-3"><label class="form-label">Status</label>
+                        <select class="form-select" name="status">
+                            <option value="ativo" {{ 'selected' if aluno.status=='ativo' else '' }}>Ativo</option>
+                            <option value="inativo" {{ 'selected' if aluno.status=='inativo' else '' }}>Inativo</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer"><button type="submit" class="btn btn-primary">Salvar</button></div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
