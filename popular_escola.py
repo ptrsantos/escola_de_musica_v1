@@ -1,17 +1,56 @@
 """
-Popula o banco com dados de exemplo da escola de música.
+Migra o schema e popula o banco com dados de exemplo da escola de música.
+
+Este script é autossuficiente: garante que as colunas de horário de aula
+(`dia_aula_semana` e `hora_aula`) existam na tabela `aluno` e, em seguida,
+recria os dados de exemplo.
 
 Uso:  python popular_escola.py
 """
-from datetime import date, timedelta
+from datetime import date, time, timedelta
+
+from sqlalchemy import inspect, text
 
 from app import create_app, db, init_db
 from app.models import Usuario, Instrumento, Aluno, Mensalidade, Pagamento, Aula
+
+
+def migrar_schema():
+    """Adiciona colunas novas à tabela `aluno` caso ainda não existam.
+
+    Necessário porque `db.create_all()` não altera tabelas já criadas antes
+    de os campos existirem (ex.: Postgres na nuvem). As colunas são nulas,
+    então a migração é não-destrutiva e idempotente. Compatível com
+    Postgres e SQLite.
+    """
+    insp = inspect(db.engine)
+    colunas = {c['name'] for c in insp.get_columns('aluno')}
+
+    alteracoes = []
+    if 'dia_aula_semana' not in colunas:
+        alteracoes.append('ADD COLUMN dia_aula_semana INTEGER')
+    if 'hora_aula' not in colunas:
+        alteracoes.append('ADD COLUMN hora_aula TIME')
+
+    if not alteracoes:
+        print('Schema já atualizado: colunas de horário de aula presentes.')
+        return
+
+    with db.engine.begin() as conn:
+        for alteracao in alteracoes:
+            sql = f'ALTER TABLE aluno {alteracao}'
+            print('Migrando schema:', sql)
+            conn.execute(text(sql))
+    print(f'Migração aplicada (dialeto: {db.engine.dialect.name}).')
+
 
 app = create_app()
 init_db(app)  # cria tabelas + instrumentos padrão
 
 with app.app_context():
+    # Garante que o schema tenha as colunas novas antes de popular os dados.
+    migrar_schema()
+
     # Limpa dados transacionais para o script ser idempotente
     Pagamento.query.delete()
     Mensalidade.query.delete()
@@ -34,21 +73,32 @@ with app.app_context():
     instrumentos = {i.nome: i for i in Instrumento.query.all()}
 
     # ---------------- Alunos ----------------
-    def novo_aluno(nome, instrumento, mensalidade, email=None, nasc=None, endereco=None):
+    def novo_aluno(nome, instrumento, mensalidade, email=None, nasc=None, endereco=None,
+                   dia_aula=None, hora_aula=None):
         a = Aluno(nome=nome, instrumento_id=instrumentos[instrumento].id,
                   mensalidade_base=mensalidade, email=email, data_nascimento=nasc,
-                  endereco=endereco, status='ativo')
+                  endereco=endereco, status='ativo',
+                  dia_aula_semana=dia_aula, hora_aula=hora_aula)
         db.session.add(a)
         return a
 
+    hoje_data = date.today()
+    dia_semana_hoje = hoje_data.weekday()  # 0=segunda..6=domingo
+    # Dois alunos terão aula "hoje" para demonstrar a agenda do dia.
+    # Um aluno faz aniversário "hoje" para demonstrar o bloco de avisos.
+
     ana = novo_aluno('Ana Silva', 'Violão', 250.0, email='ana@aluno.com',
-                     nasc=date(2010, 5, 12), endereco='Rua das Flores, 123')
+                     nasc=date(2010, 5, 12), endereco='Rua das Flores, 123',
+                     dia_aula=dia_semana_hoje, hora_aula=time(15, 0))
     bruno = novo_aluno('Bruno Costa', 'Piano', 300.0,
-                       nasc=date(2012, 8, 3), endereco='Av. Central, 456')
+                       nasc=date(2012, 8, 3), endereco='Av. Central, 456',
+                       dia_aula=(dia_semana_hoje + 1) % 7, hora_aula=time(9, 0))
     carla = novo_aluno('Carla Souza', 'Bateria', 280.0,
-                       nasc=date(2009, 1, 20), endereco='Rua Nova, 789')
+                       nasc=hoje_data.replace(year=2009), endereco='Rua Nova, 789',
+                       dia_aula=dia_semana_hoje, hora_aula=time(16, 30))
     diego = novo_aluno('Diego Lima', 'Violino', 320.0,
-                       nasc=date(2011, 11, 2), endereco='Rua do Sol, 55')
+                       nasc=date(2011, 11, 2), endereco='Rua do Sol, 55',
+                       dia_aula=(dia_semana_hoje + 2) % 7, hora_aula=time(10, 0))
     elisa = novo_aluno('Elisa Rocha', 'Canto', 260.0,
                        nasc=date(2008, 3, 15), endereco='Rua da Serra, 90')
     db.session.commit()

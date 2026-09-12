@@ -3,8 +3,19 @@ from calendar import monthrange
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask import current_app
 from flask_login import UserMixin
+from sqlalchemy import func
 
 from app import db
+
+
+# ---------------------------------------------------------------------------
+# Dias da semana (convenção Python weekday(): segunda=0 ... domingo=6).
+# Usado no cadastro de horário de aula recorrente e na "agenda do dia".
+# ---------------------------------------------------------------------------
+DIAS_SEMANA_PT = [
+    'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira',
+    'Sexta-feira', 'Sábado', 'Domingo',
+]
 
 
 # ---------------------------------------------------------------------------
@@ -68,6 +79,11 @@ class Aluno(db.Model):
     status = db.Column(db.String(20), nullable=False, default='ativo')
     data_cadastro = db.Column(db.DateTime, default=datetime.utcnow)
 
+    # Horário de aula recorrente (semanal). Convenção weekday(): segunda=0..domingo=6.
+    # NULL = aluno sem horário fixo definido.
+    dia_aula_semana = db.Column(db.Integer, nullable=True)
+    hora_aula = db.Column(db.Time, nullable=True)
+
     mensalidades = db.relationship('Mensalidade', backref='aluno', lazy=True,
                                    cascade='all, delete-orphan')
     aulas = db.relationship('Aula', backref='aluno', lazy=True,
@@ -81,6 +97,48 @@ class Aluno(db.Model):
         return hoje.year - self.data_nascimento.year - (
             (hoje.month, hoje.day) < (self.data_nascimento.month, self.data_nascimento.day)
         )
+
+    # ----------------- Horário de aula recorrente -----------------
+    @property
+    def nome_dia_aula(self):
+        """Nome do dia da aula por extenso ('Quarta-feira') ou None."""
+        if self.dia_aula_semana is None:
+            return None
+        if 0 <= self.dia_aula_semana <= 6:
+            return DIAS_SEMANA_PT[self.dia_aula_semana]
+        return None
+
+    @property
+    def hora_aula_formatada(self):
+        return self.hora_aula.strftime('%H:%M') if self.hora_aula else None
+
+    @property
+    def horario_aula_descricao(self):
+        """Descrição amigável do horário fixo (ex.: 'Quarta-feira às 15:00')."""
+        dia = self.nome_dia_aula
+        if not dia:
+            return None
+        if self.hora_aula:
+            return f'{dia} às {self.hora_aula.strftime("%H:%M")}'
+        return dia
+
+    @property
+    def tem_aula_hoje(self):
+        return self.dia_aula_semana is not None and self.dia_aula_semana == date.today().weekday()
+
+    # ----------------- Aniversário -----------------
+    @property
+    def faz_aniversario_hoje(self):
+        if not self.data_nascimento:
+            return False
+        hoje = date.today()
+        return (self.data_nascimento.month, self.data_nascimento.day) == (hoje.month, hoje.day)
+
+    @property
+    def faz_aniversario_no_mes(self):
+        if not self.data_nascimento:
+            return False
+        return self.data_nascimento.month == date.today().month
 
     # ----------------- Regras financeiras -----------------
     @property
@@ -218,6 +276,46 @@ def get_last_day_of_month():
 
 def format_date_for_form(date_obj):
     return date_obj.strftime('%Y-%m-%d') if date_obj else ''
+
+
+# ---------------------------------------------------------------------------
+# Consultas de apoio à página inicial operacional (home).
+# ---------------------------------------------------------------------------
+def alunos_com_aula_no_dia(dia_semana):
+    """Alunos ativos com aula recorrente no dia da semana informado
+    (0=segunda..6=domingo), ordenados por horário."""
+    return (Aluno.query
+            .filter(Aluno.status == 'ativo',
+                    Aluno.dia_aula_semana == dia_semana)
+            .order_by(Aluno.hora_aula.asc().nullslast(), Aluno.nome)
+            .all())
+
+
+def aniversariantes_do_dia(dia=None):
+    """Alunos ativos que fazem aniversário no dia informado (padrão: hoje)."""
+    dia = dia or date.today()
+    return [a for a in Aluno.query.filter_by(status='ativo').all()
+            if a.data_nascimento
+            and (a.data_nascimento.month, a.data_nascimento.day) == (dia.month, dia.day)]
+
+
+def aniversariantes_do_mes(mes=None):
+    """Alunos ativos que fazem aniversário no mês informado (padrão: mês atual),
+    ordenados por dia."""
+    mes = mes or date.today().month
+    lista = [a for a in Aluno.query.filter_by(status='ativo').all()
+             if a.data_nascimento and a.data_nascimento.month == mes]
+    return sorted(lista, key=lambda a: a.data_nascimento.day)
+
+
+def balanco_entradas(inicio, fim):
+    """Soma dos pagamentos (entradas) com data_pagamento no intervalo
+    [inicio, fim] inclusive. Retorna float."""
+    total = (db.session.query(func.coalesce(func.sum(Pagamento.valor), 0.0))
+             .filter(Pagamento.data_pagamento >= inicio,
+                     Pagamento.data_pagamento <= fim)
+             .scalar())
+    return round(float(total or 0.0), 2)
 
 
 def inicializar_instrumentos():

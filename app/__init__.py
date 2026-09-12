@@ -85,10 +85,12 @@ def create_app():
     login_manager.init_app(app)
     login_manager.login_view = 'login'
 
-    # Context processor para disponibilizar a data atual em todos os templates
+    # Context processor para disponibilizar a data atual e os dias da semana
+    # (usados no cadastro de horário de aula) em todos os templates
     @app.context_processor
     def inject_now():
-        return {'now': datetime.now}
+        from app.models import DIAS_SEMANA_PT
+        return {'now': datetime.now, 'DIAS_SEMANA_PT': DIAS_SEMANA_PT}
 
     # Importar modelos após criar db para evitar importações circulares
     from app.models import Usuario, Instrumento, Aluno, Mensalidade, Pagamento, Aula

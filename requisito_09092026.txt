@@ -1,0 +1,5 @@
+Mas a princípio na pagina inicial precisamos visualizar: 
+    Agenda do dia (alunos que terão aula de quarta-feira)
+    Avisos (aniversário de aluno)
+    Balanço de entrada
+    Assim o acesso fica mais rápido, se eu for dar aula agora 15h, já abro o sistema e na página inicial já consigo acessar o perfil do aluno, e posso fazer as anotações.

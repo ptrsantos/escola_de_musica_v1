@@ -7,7 +7,9 @@ from sqlalchemy import func
 
 from app import db
 from app.models import (Usuario, Instrumento, Aluno, Mensalidade, Pagamento, Aula,
-                        format_date_for_form)
+                        format_date_for_form, DIAS_SEMANA_PT,
+                        alunos_com_aula_no_dia, aniversariantes_do_dia,
+                        aniversariantes_do_mes, balanco_entradas)
 
 
 def papeis_required(*papeis):
@@ -28,6 +30,31 @@ def parse_date(value):
     return datetime.strptime(value, '%Y-%m-%d').date() if value else None
 
 
+def parse_time(value):
+    """Converte 'HH:MM' (ou 'HH:MM:SS') em datetime.time, ou None se vazio."""
+    if not value:
+        return None
+    value = value.strip()
+    for fmt in ('%H:%M', '%H:%M:%S'):
+        try:
+            return datetime.strptime(value, fmt).time()
+        except ValueError:
+            continue
+    return None
+
+
+def parse_dia_semana(value):
+    """Converte o valor do select de dia da semana em int 0..6 ou None.
+    Valores vazios ou '-1' (Sem horário fixo) resultam em None."""
+    if value is None or value == '':
+        return None
+    try:
+        dia = int(value)
+    except (TypeError, ValueError):
+        return None
+    return dia if 0 <= dia <= 6 else None
+
+
 def register_routes(app):
     # =================================================================
     # Home / autenticação (mesma estrutura do fluxo de caixa)
@@ -35,8 +62,40 @@ def register_routes(app):
     @app.route('/')
     def home():
         if current_user.is_authenticated:
-            return redirect(url_for('dashboard'))
+            if current_user.is_aluno:
+                return redirect(url_for('minha_area'))
+            return redirect(url_for('inicio'))
         return render_template('index.html')
+
+    # =================================================================
+    # Página inicial operacional (agenda do dia, aniversariantes, entradas)
+    # Voltada a quem dá aula: acesso rápido à ficha do aluno para anotar.
+    # =================================================================
+    @app.route('/inicio')
+    @papeis_required('gestora', 'professora')
+    def inicio():
+        hoje = date.today()
+        dia_semana = hoje.weekday()
+
+        agenda_hoje = alunos_com_aula_no_dia(dia_semana)
+        aniv_hoje = aniversariantes_do_dia(hoje)
+        aniv_mes = aniversariantes_do_mes(hoje.month)
+
+        # Balanço de entradas: pagamentos recebidos hoje e no mês corrente.
+        primeiro_dia_mes = hoje.replace(day=1)
+        entradas_hoje = balanco_entradas(hoje, hoje)
+        entradas_mes = balanco_entradas(primeiro_dia_mes, hoje)
+
+        return render_template(
+            'inicio.html',
+            hoje=hoje,
+            dia_semana_nome=DIAS_SEMANA_PT[dia_semana],
+            agenda_hoje=agenda_hoje,
+            aniversariantes_hoje=aniv_hoje,
+            aniversariantes_mes=aniv_mes,
+            entradas_hoje=entradas_hoje,
+            entradas_mes=entradas_mes,
+        )
 
     @app.route('/registrar', methods=['GET', 'POST'])
     def registrar():
@@ -75,7 +134,11 @@ def register_routes(app):
             if usuario and usuario.verificar_senha(senha):
                 login_user(usuario)
                 next_page = request.args.get('next')
-                return redirect(next_page or url_for('dashboard'))
+                if next_page:
+                    return redirect(next_page)
+                if usuario.is_aluno:
+                    return redirect(url_for('minha_area'))
+                return redirect(url_for('inicio'))
             flash('Email ou senha inválidos.', 'danger')
         return render_template('login.html')
 
@@ -207,6 +270,8 @@ def register_routes(app):
                 data_nascimento=parse_date(request.form.get('data_nascimento')),
                 email=(request.form.get('email') or '').strip().lower() or None,
                 endereco=request.form.get('endereco'),
+                dia_aula_semana=parse_dia_semana(request.form.get('dia_aula_semana')),
+                hora_aula=parse_time(request.form.get('hora_aula')),
                 status='ativo',
             )
             db.session.add(aluno)
@@ -246,6 +311,8 @@ def register_routes(app):
             aluno.data_nascimento = parse_date(request.form.get('data_nascimento'))
             aluno.email = (request.form.get('email') or '').strip().lower() or None
             aluno.endereco = request.form.get('endereco')
+            aluno.dia_aula_semana = parse_dia_semana(request.form.get('dia_aula_semana'))
+            aluno.hora_aula = parse_time(request.form.get('hora_aula'))
             aluno.status = request.form.get('status', 'ativo')
             db.session.commit()
             flash('Cadastro atualizado com sucesso!', 'success')

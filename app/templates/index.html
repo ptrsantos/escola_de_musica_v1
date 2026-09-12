@@ -7,7 +7,8 @@
 <div class="container mt-5">
     <div class="row">
         <div class="col-md-6 offset-md-3 text-center">
-            <h1 class="display-4"><i class="fas fa-music text-primary me-2"></i>Escola de Música</h1>
+            <img src="{{ url_for('static', filename='logo.jpeg') }}" alt="Studio Duo" class="mb-3 rounded" style="max-height: 140px;">
+            <h1 class="display-4">Studio Duo</h1>
             <p class="lead">Gestão de alunos, mensalidades e acompanhamento pedagógico, com análise de risco de evasão.</p>
             <div class="mt-4">
                 <a href="{{ url_for('login') }}" class="btn btn-primary btn-lg me-2">Login</a>

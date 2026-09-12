@@ -8,17 +8,33 @@ modais), agora voltada ao domínio escolar.
 
 ## Como executar
 
+Depois de clonar o repositório, siga os passos na ordem:
+
 ```powershell
-cd escola_de_musica_adaptada
+# 1. Criar o ambiente virtual
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1        # Linux/Mac: source .venv/bin/activate
+
+# 2. Ativar o ambiente virtual
+.\.venv\Scripts\Activate.ps1         # Linux/Mac: source .venv/bin/activate
+
+# 3. Instalar as dependências
 pip install -r requirements.txt
 
-python popular_escola.py             # cria e popula o banco com dados de exemplo
+# 4. Migrar o banco e inserir os dados iniciais (um único comando)
+python popular_escola.py
+
+# 5. Rodar a aplicação
 python main.py                       # http://127.0.0.1:5000
 ```
 
-> Só inicializar o banco (sem dados de exemplo): `python inicializar_db.py`.
+> **Banco de dados:** sem a variável `DATABASE_URL` definida, a aplicação usa
+> SQLite local (arquivo em `instance/`). Para usar Postgres (nuvem), defina
+> `DATABASE_URL` no arquivo `.env` (ver `.env.example`). O passo 4 funciona nos
+> dois casos: ele cria as tabelas, aplica a migração das colunas de horário de
+> aula e popula os dados de exemplo, sendo seguro rodar mais de uma vez.
+
+> **São apenas dois scripts Python na raiz:** `popular_escola.py` (migração +
+> dados iniciais) e `main.py` (executa a aplicação).
 
 ## Usuários de teste (senha `123456`)
 
@@ -60,15 +76,17 @@ python main.py                       # http://127.0.0.1:5000
 ## Estrutura
 
 ```
-escola_de_musica_adaptada/
-├── main.py                 # ponto de entrada (igual ao original)
-├── inicializar_db.py       # cria tabelas + instrumentos
-├── popular_escola.py       # popula dados de exemplo
+escola_de_musica_v1/
+├── main.py                 # ponto de entrada: executa a aplicação
+├── popular_escola.py       # migra o schema + insere os dados iniciais
 ├── requirements.txt
+├── vercel.json             # configuração de deploy (Vercel)
+├── api/
+│   └── index.py            # handler WSGI para a Vercel
 └── app/
     ├── __init__.py         # factory create_app/init_db + RISK_CONFIG
     ├── models.py           # Usuario, Instrumento, Aluno, Mensalidade, Pagamento, Aula
     ├── routes.py           # rotas, autenticação e controle por perfil
     ├── forms.py            # formulários (Flask-WTF)
-    └── templates/          # identidade visual do fluxo de caixa adaptada
+    └── templates/          # telas (dashboard, início, alunos, financeiro, etc.)
 ```

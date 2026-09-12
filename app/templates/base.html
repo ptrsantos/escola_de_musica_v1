@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Escola de Música - {% block title %}{% endblock %}</title>
+    <title>Studio Duo - {% block title %}{% endblock %}</title>
+    <link rel="icon" type="image/jpeg" href="{{ url_for('static', filename='logo.jpeg') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='logo.jpeg') }}">
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.5/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- Font Awesome -->
@@ -31,6 +33,15 @@
         .risco-medio { background-color: #fff3cd; color: #664d03; }
         .risco-alto  { background-color: #f8d7da; color: #842029; }
 
+        /* Moldura branca ao redor do logo (destaca a logo teal sobre fundo azul) */
+        .logo-moldura {
+            background-color: #fff;
+            border: 0.5px solid #fff;
+            padding: 0.5px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+        }
+
         /* Spinner overlay (mantido do projeto original) */
         #spinner-overlay {
             display: none;
@@ -53,12 +64,15 @@
     {% if current_user.is_authenticated %}
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
         <div class="container-fluid">
-            <a class="navbar-brand" href="{{ url_for('dashboard') }}" onclick="mostrarSpinner()"><i class="fas fa-music me-2"></i>Escola de Música</a>
+            <a class="navbar-brand d-flex align-items-center" href="{{ url_for('dashboard') }}" onclick="mostrarSpinner()"><img src="{{ url_for('static', filename='logo.jpeg') }}" alt="Studio Duo" height="36" class="me-2 logo-moldura">Studio Duo</a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav me-auto">
+                    {% if current_user.papel in ['gestora','professora'] %}
+                    <li class="nav-item"><a class="nav-link {% if request.endpoint == 'inicio' %}active{% endif %}" href="{{ url_for('inicio') }}" onclick="mostrarSpinner()">Início</a></li>
+                    {% endif %}
                     <li class="nav-item"><a class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}" onclick="mostrarSpinner()">Dashboard</a></li>
                     {% if current_user.papel in ['gestora','professora'] %}
                     <li class="nav-item"><a class="nav-link {% if request.endpoint in ['alunos','aluno_detalhe'] %}active{% endif %}" href="{{ url_for('alunos') }}" onclick="mostrarSpinner()">Alunos</a></li>
@@ -96,6 +110,11 @@
             {% if current_user.is_authenticated %}
             <div class="col-md-2 sidebar">
                 <div class="list-group list-group-flush">
+                    {% if current_user.papel in ['gestora','professora'] %}
+                    <a href="{{ url_for('inicio') }}" class="list-group-item list-group-item-action {% if request.endpoint == 'inicio' %}active{% endif %}" onclick="mostrarSpinner()">
+                        <i class="fas fa-home me-2"></i> Início
+                    </a>
+                    {% endif %}
                     <a href="{{ url_for('dashboard') }}" class="list-group-item list-group-item-action {% if request.endpoint == 'dashboard' %}active{% endif %}" onclick="mostrarSpinner()">
                         <i class="fas fa-tachometer-alt me-2"></i> Dashboard
                     </a>
@@ -149,7 +168,9 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.5/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.0/dist/chart.min.js"></script>
 
-    {% block scripts %}
+    {# Spinner e comportamentos globais: ficam FORA do bloco de scripts das
+       páginas filhas para continuarem disponíveis mesmo quando uma página
+       sobrescreve esse bloco sem chamar super() (ex.: dashboard.html). #}
     <script>
         function mostrarSpinner() {
             const s = document.getElementById('spinner-overlay');
@@ -174,6 +195,7 @@
             document.querySelectorAll('form').forEach(form => form.addEventListener('submit', mostrarSpinner));
         });
     </script>
-    {% endblock %}
+
+    {% block scripts %}{% endblock %}
 </body>
 </html>

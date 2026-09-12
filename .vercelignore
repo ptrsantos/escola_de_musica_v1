@@ -12,9 +12,6 @@ instance/
 # Variáveis de ambiente locais (configure na dashboard do Vercel)
 .env
 
-# Scripts de diagnóstico/desenvolvimento
-_diag_db.py
-
 # IDE / SO
 .vscode/
 .idea/

@@ -28,6 +28,7 @@
                     <dt class="col-5">Endereço</dt><dd class="col-7">{{ aluno.endereco or '—' }}</dd>
                     <dt class="col-5">E-mail</dt><dd class="col-7">{{ aluno.email or '—' }}</dd>
                     <dt class="col-5">Instrumento</dt><dd class="col-7">{{ aluno.instrumento.nome }}</dd>
+                    <dt class="col-5">Aula</dt><dd class="col-7">{{ aluno.horario_aula_descricao or 'Sem horário fixo' }}</dd>
                     <dt class="col-5">Mensalidade</dt><dd class="col-7">R$ {{ "%.2f"|format(aluno.mensalidade_base)|replace(".", ",") }}</dd>
                     <dt class="col-5">Status</dt><dd class="col-7">{{ aluno.status|capitalize }}</dd>
                 </dl>
@@ -126,6 +127,17 @@
                     </div>
                     <div class="mb-3"><label class="form-label">E-mail</label><input type="email" class="form-control" name="email" value="{{ aluno.email or '' }}"></div>
                     <div class="mb-3"><label class="form-label">Endereço</label><input type="text" class="form-control" name="endereco" value="{{ aluno.endereco or '' }}"></div>
+                    <div class="row">
+                        <div class="col-6 mb-3"><label class="form-label">Dia da aula</label>
+                            <select class="form-select" name="dia_aula_semana">
+                                <option value="-1" {{ 'selected' if aluno.dia_aula_semana is none else '' }}>Sem horário fixo</option>
+                                {% for i in range(DIAS_SEMANA_PT|length) %}
+                                <option value="{{ i }}" {{ 'selected' if aluno.dia_aula_semana==i else '' }}>{{ DIAS_SEMANA_PT[i] }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-6 mb-3"><label class="form-label">Horário da aula</label><input type="time" class="form-control" name="hora_aula" value="{{ aluno.hora_aula.strftime('%H:%M') if aluno.hora_aula else '' }}"></div>
+                    </div>
                     <div class="mb-3"><label class="form-label">Status</label>
                         <select class="form-select" name="status">
                             <option value="ativo" {{ 'selected' if aluno.status=='ativo' else '' }}>Ativo</option>
