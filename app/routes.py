@@ -365,6 +365,32 @@ def register_routes(app):
             flash('Dados da mensalidade inválidos.', 'danger')
         return redirect(url_for('financeiro'))
 
+    @app.route('/editar_mensalidade/<int:id>', methods=['POST'])
+    @papeis_required('gestora')
+    def editar_mensalidade(id):
+        m = db.get_or_404(Mensalidade, id)
+        try:
+            m.aluno_id = int(request.form['aluno_id'])
+            m.competencia = request.form['competencia']
+            m.valor = float(request.form['valor'])
+            m.vencimento = parse_date(request.form['vencimento'])
+            m.atualizar_status()
+            db.session.commit()
+            flash('Mensalidade atualizada com sucesso!', 'success')
+        except (KeyError, ValueError):
+            db.session.rollback()
+            flash('Dados da mensalidade inválidos.', 'danger')
+        return redirect(url_for('financeiro'))
+
+    @app.route('/excluir_mensalidade/<int:id>', methods=['POST'])
+    @papeis_required('gestora')
+    def excluir_mensalidade(id):
+        m = db.get_or_404(Mensalidade, id)
+        db.session.delete(m)  # remove os pagamentos em cascata
+        db.session.commit()
+        flash('Mensalidade removida com sucesso!', 'success')
+        return redirect(url_for('financeiro'))
+
     @app.route('/registrar_pagamento/<int:id>', methods=['POST'])
     @papeis_required('gestora')
     def registrar_pagamento(id):
@@ -379,6 +405,34 @@ def register_routes(app):
         m.atualizar_status()
         db.session.commit()
         flash('Pagamento registrado com sucesso!', 'success')
+        return redirect(url_for('financeiro'))
+
+    @app.route('/editar_pagamento/<int:id>', methods=['POST'])
+    @papeis_required('gestora')
+    def editar_pagamento(id):
+        p = db.get_or_404(Pagamento, id)
+        try:
+            p.valor = float(request.form['valor'])
+            p.data_pagamento = parse_date(request.form.get('data_pagamento')) or p.data_pagamento
+            p.observacao = request.form.get('observacao')
+            p.mensalidade.atualizar_status()
+            db.session.commit()
+            flash('Pagamento atualizado com sucesso!', 'success')
+        except (KeyError, ValueError):
+            db.session.rollback()
+            flash('Dados do pagamento inválidos.', 'danger')
+        return redirect(url_for('financeiro'))
+
+    @app.route('/excluir_pagamento/<int:id>', methods=['POST'])
+    @papeis_required('gestora')
+    def excluir_pagamento(id):
+        p = db.get_or_404(Pagamento, id)
+        mensalidade = p.mensalidade
+        db.session.delete(p)
+        db.session.flush()
+        mensalidade.atualizar_status()
+        db.session.commit()
+        flash('Pagamento removido com sucesso!', 'success')
         return redirect(url_for('financeiro'))
 
     # =================================================================
@@ -405,6 +459,33 @@ def register_routes(app):
             alunos=Aluno.query.filter_by(status='ativo').order_by(Aluno.nome).all(),
             hoje=format_date_for_form(date.today()),
         )
+
+    @app.route('/editar_aula/<int:id>', methods=['POST'])
+    @papeis_required('gestora', 'professora')
+    def editar_aula(id):
+        aula = db.get_or_404(Aula, id)
+        try:
+            aula.aluno_id = int(request.form['aluno_id'])
+            aula.professora = request.form.get('professora') or aula.professora
+            aula.data = parse_date(request.form.get('data')) or aula.data
+            aula.observacao = request.form.get('observacao')
+            aula.orientacao_estudo = request.form.get('orientacao_estudo')
+            db.session.commit()
+            flash('Acompanhamento atualizado com sucesso!', 'success')
+        except (KeyError, ValueError):
+            db.session.rollback()
+            flash('Dados do acompanhamento inválidos.', 'danger')
+        return redirect(request.form.get('next') or url_for('acompanhamento'))
+
+    @app.route('/excluir_aula/<int:id>', methods=['POST'])
+    @papeis_required('gestora', 'professora')
+    def excluir_aula(id):
+        aula = db.get_or_404(Aula, id)
+        destino = request.form.get('next') or url_for('acompanhamento')
+        db.session.delete(aula)
+        db.session.commit()
+        flash('Acompanhamento removido com sucesso!', 'success')
+        return redirect(destino)
 
     # =================================================================
     # Área do aluno (consulta apenas dos próprios dados)
@@ -444,6 +525,123 @@ def register_routes(app):
             total_recebido=total_recebido,
             em_aberto=round(total_previsto - total_recebido, 2),
         )
+
+    # =================================================================
+    # Instrumentos (cadastro) — somente gestora
+    # =================================================================
+    @app.route('/instrumentos')
+    @papeis_required('gestora')
+    def instrumentos():
+        lista = Instrumento.query.order_by(Instrumento.nome).all()
+        return render_template('instrumentos.html', instrumentos=lista)
+
+    @app.route('/adicionar_instrumento', methods=['POST'])
+    @papeis_required('gestora')
+    def adicionar_instrumento():
+        nome = (request.form.get('nome') or '').strip()
+        if not nome:
+            flash('Informe o nome do instrumento.', 'danger')
+        elif Instrumento.query.filter(func.lower(Instrumento.nome) == nome.lower()).first():
+            flash('Já existe um instrumento com esse nome.', 'warning')
+        else:
+            db.session.add(Instrumento(nome=nome))
+            db.session.commit()
+            flash('Instrumento adicionado com sucesso!', 'success')
+        return redirect(url_for('instrumentos'))
+
+    @app.route('/editar_instrumento/<int:id>', methods=['POST'])
+    @papeis_required('gestora')
+    def editar_instrumento(id):
+        instrumento = db.get_or_404(Instrumento, id)
+        nome = (request.form.get('nome') or '').strip()
+        if not nome:
+            flash('Informe o nome do instrumento.', 'danger')
+        elif Instrumento.query.filter(func.lower(Instrumento.nome) == nome.lower(),
+                                      Instrumento.id != id).first():
+            flash('Já existe um instrumento com esse nome.', 'warning')
+        else:
+            instrumento.nome = nome
+            db.session.commit()
+            flash('Instrumento atualizado com sucesso!', 'success')
+        return redirect(url_for('instrumentos'))
+
+    @app.route('/excluir_instrumento/<int:id>', methods=['POST'])
+    @papeis_required('gestora')
+    def excluir_instrumento(id):
+        instrumento = db.get_or_404(Instrumento, id)
+        if instrumento.alunos:
+            flash(f'Não é possível excluir "{instrumento.nome}": há {len(instrumento.alunos)} '
+                  f'aluno(s) vinculado(s).', 'danger')
+        else:
+            db.session.delete(instrumento)
+            db.session.commit()
+            flash('Instrumento removido com sucesso!', 'success')
+        return redirect(url_for('instrumentos'))
+
+    # =================================================================
+    # Usuários (gestão de acesso) — somente gestora
+    # =================================================================
+    @app.route('/usuarios')
+    @papeis_required('gestora')
+    def usuarios():
+        lista = Usuario.query.order_by(Usuario.nome).all()
+        return render_template('usuarios.html', usuarios=lista,
+                               papeis=[Usuario.PAPEL_GESTORA, Usuario.PAPEL_PROFESSORA,
+                                       Usuario.PAPEL_ALUNO])
+
+    @app.route('/adicionar_usuario', methods=['POST'])
+    @papeis_required('gestora')
+    def adicionar_usuario():
+        nome = (request.form.get('nome') or '').strip()
+        email = (request.form.get('email') or '').strip().lower()
+        senha = request.form.get('senha')
+        papel = request.form.get('papel', Usuario.PAPEL_GESTORA)
+        if not (nome and email and senha):
+            flash('Preencha nome, e-mail e senha.', 'danger')
+        elif Usuario.query.filter_by(email=email).first():
+            flash('Já existe um usuário com esse e-mail.', 'warning')
+        else:
+            novo = Usuario(nome=nome, email=email, papel=papel)
+            novo.set_senha(senha)
+            db.session.add(novo)
+            db.session.commit()
+            flash('Usuário criado com sucesso!', 'success')
+        return redirect(url_for('usuarios'))
+
+    @app.route('/editar_usuario/<int:id>', methods=['POST'])
+    @papeis_required('gestora')
+    def editar_usuario(id):
+        usuario = db.get_or_404(Usuario, id)
+        nome = (request.form.get('nome') or '').strip()
+        email = (request.form.get('email') or '').strip().lower()
+        papel = request.form.get('papel', usuario.papel)
+        senha = request.form.get('senha')
+        conflito = Usuario.query.filter(Usuario.email == email, Usuario.id != id).first()
+        if not (nome and email):
+            flash('Nome e e-mail são obrigatórios.', 'danger')
+        elif conflito:
+            flash('Já existe outro usuário com esse e-mail.', 'warning')
+        else:
+            usuario.nome = nome
+            usuario.email = email
+            usuario.papel = papel
+            if senha:
+                usuario.set_senha(senha)
+            db.session.commit()
+            flash('Usuário atualizado com sucesso!', 'success')
+        return redirect(url_for('usuarios'))
+
+    @app.route('/excluir_usuario/<int:id>', methods=['POST'])
+    @papeis_required('gestora')
+    def excluir_usuario(id):
+        usuario = db.get_or_404(Usuario, id)
+        if usuario.id == current_user.id:
+            flash('Você não pode excluir o próprio usuário conectado.', 'danger')
+        else:
+            db.session.delete(usuario)
+            db.session.commit()
+            flash('Usuário removido com sucesso!', 'success')
+        return redirect(url_for('usuarios'))
 
     # =================================================================
     # Handlers de erro

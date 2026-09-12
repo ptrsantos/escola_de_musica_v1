@@ -91,7 +91,15 @@
             {% for aula in aluno.aulas|sort(attribute='data', reverse=true) %}
             <div class="col-md-6">
                 <div class="border rounded p-3 h-100">
-                    <div class="text-muted small">{{ aula.data.strftime('%d/%m/%Y') }} · {{ aula.professora }}</div>
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="text-muted small">{{ aula.data.strftime('%d/%m/%Y') }} · {{ aula.professora }}</div>
+                        {% if current_user.papel in ['gestora','professora'] %}
+                        <form method="POST" action="{{ url_for('excluir_aula', id=aula.id) }}" onsubmit="return confirm('Excluir este acompanhamento?');">
+                            <input type="hidden" name="next" value="{{ url_for('aluno_detalhe', id=aluno.id) }}">
+                            <button class="btn btn-sm btn-outline-danger py-0" title="Excluir"><i class="fas fa-trash"></i></button>
+                        </form>
+                        {% endif %}
+                    </div>
                     <div class="small text-uppercase fw-bold text-secondary mt-2">Observações</div>
                     <p class="mb-2">{{ aula.observacao or 'Sem observações.' }}</p>
                     <div class="small text-uppercase fw-bold text-secondary">Para estudar</div>

@@ -18,8 +18,71 @@
             min-height: calc(100vh - 56px);
             background-color: #f8f9fa;
             padding-top: 20px;
+            width: 220px;
+            flex: 0 0 220px;
+            transition: width 0.25s ease, flex-basis 0.25s ease, transform 0.25s ease;
+            overflow-x: hidden;
         }
-        .main-content { padding: 20px; }
+        .sidebar .list-group-item { white-space: nowrap; }
+        .sidebar .list-group-item i { width: 1.25rem; text-align: center; }
+        .main-content {
+            padding: 20px;
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+        /* Estado recolhido em telas grandes: mostra só os ícones */
+        .app-layout.sidebar-collapsed .sidebar {
+            width: 64px;
+            flex-basis: 64px;
+        }
+        .app-layout.sidebar-collapsed .sidebar .item-text {
+            display: none;
+        }
+        .app-layout.sidebar-collapsed .sidebar .list-group-item i {
+            margin-right: 0 !important;
+        }
+        #sidebar-toggle {
+            border: none;
+            background: transparent;
+            color: #fff;
+            font-size: 1.15rem;
+            padding: 0.25rem 0.6rem;
+            cursor: pointer;
+        }
+        #sidebar-toggle:hover { opacity: 0.85; }
+        /* Backdrop escurecido usado quando a sidebar vira off-canvas (mobile) */
+        #sidebar-backdrop {
+            display: none;
+            position: fixed;
+            top: 56px; left: 0; right: 0; bottom: 0;
+            background-color: rgba(0, 0, 0, 0.4);
+            z-index: 1030;
+        }
+
+        /* ---- Tablets e celulares: sidebar vira painel deslizante (off-canvas) ---- */
+        @media (max-width: 991.98px) {
+            .sidebar {
+                position: fixed;
+                top: 56px; left: 0; bottom: 0;
+                z-index: 1035;
+                width: 240px;
+                flex-basis: 240px;
+                transform: translateX(-100%);
+                box-shadow: 2px 0 8px rgba(0, 0, 0, 0.15);
+                overflow-y: auto;
+            }
+            /* Em telas pequenas o recolher/expandir controla o deslizar */
+            .app-layout:not(.sidebar-collapsed) .sidebar {
+                transform: translateX(0);
+            }
+            .app-layout:not(.sidebar-collapsed) .sidebar {
+                width: 240px;
+                flex-basis: 240px;
+            }
+            /* Nunca esconder os textos no modo off-canvas (sempre há espaço) */
+            .sidebar .item-text { display: inline !important; }
+            .app-layout:not(.sidebar-collapsed) #sidebar-backdrop { display: block; }
+        }
         .adimplente { color: green; }
         .inadimplente { color: red; }
         .btn-group-sm { display: flex; gap: 5px; }
@@ -64,7 +127,8 @@
     {% if current_user.is_authenticated %}
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
         <div class="container-fluid">
-            <a class="navbar-brand d-flex align-items-center" href="{{ url_for('dashboard') }}" onclick="mostrarSpinner()"><img src="{{ url_for('static', filename='logo.jpeg') }}" alt="Studio Duo" height="36" class="me-2 logo-moldura">Studio Duo</a>
+            <button type="button" id="sidebar-toggle" class="me-2" title="Recolher/expandir menu" aria-label="Recolher ou expandir o menu lateral"><i class="fas fa-eye" id="sidebar-toggle-icon"></i></button>
+            <a class="navbar-brand d-flex align-items-center" href="{{ url_for('dashboard') }}" onclick="mostrarSpinner()"><img src="{{ url_for('static', filename='logo.jpeg') }}" alt="Studio Duo" height="36" class="me-3 logo-moldura">Studio Duo</a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
@@ -85,6 +149,8 @@
                     {% endif %}
                     {% if current_user.papel == 'gestora' %}
                     <li class="nav-item"><a class="nav-link {% if request.endpoint == 'relatorios' %}active{% endif %}" href="{{ url_for('relatorios') }}" onclick="mostrarSpinner()">Relatórios</a></li>
+                    <li class="nav-item"><a class="nav-link {% if request.endpoint == 'instrumentos' %}active{% endif %}" href="{{ url_for('instrumentos') }}" onclick="mostrarSpinner()">Instrumentos</a></li>
+                    <li class="nav-item"><a class="nav-link {% if request.endpoint == 'usuarios' %}active{% endif %}" href="{{ url_for('usuarios') }}" onclick="mostrarSpinner()">Usuários</a></li>
                     {% endif %}
                     {% if current_user.papel == 'aluno' %}
                     <li class="nav-item"><a class="nav-link {% if request.endpoint == 'minha_area' %}active{% endif %}" href="{{ url_for('minha_area') }}" onclick="mostrarSpinner()">Minha Área</a></li>
@@ -105,65 +171,72 @@
     </nav>
     {% endif %}
 
-    <div class="container-fluid">
-        <div class="row">
-            {% if current_user.is_authenticated %}
-            <div class="col-md-2 sidebar">
+    {% if current_user.is_authenticated %}
+    <div class="app-layout d-flex" id="app-layout">
+        <div id="sidebar-backdrop"></div>
+        <div class="sidebar" id="sidebar">
                 <div class="list-group list-group-flush">
                     {% if current_user.papel in ['gestora','professora'] %}
                     <a href="{{ url_for('inicio') }}" class="list-group-item list-group-item-action {% if request.endpoint == 'inicio' %}active{% endif %}" onclick="mostrarSpinner()">
-                        <i class="fas fa-home me-2"></i> Início
+                        <i class="fas fa-home me-2"></i> <span class="item-text">Início</span>
                     </a>
                     {% endif %}
                     <a href="{{ url_for('dashboard') }}" class="list-group-item list-group-item-action {% if request.endpoint == 'dashboard' %}active{% endif %}" onclick="mostrarSpinner()">
-                        <i class="fas fa-tachometer-alt me-2"></i> Dashboard
+                        <i class="fas fa-tachometer-alt me-2"></i> <span class="item-text">Dashboard</span>
                     </a>
                     {% if current_user.papel in ['gestora','professora'] %}
                     <a href="{{ url_for('alunos') }}" class="list-group-item list-group-item-action {% if request.endpoint in ['alunos','aluno_detalhe'] %}active{% endif %}" onclick="mostrarSpinner()">
-                        <i class="fas fa-users me-2"></i> Alunos
+                        <i class="fas fa-users me-2"></i> <span class="item-text">Alunos</span>
                     </a>
                     {% endif %}
                     {% if current_user.papel == 'gestora' %}
                     <a href="{{ url_for('financeiro') }}" class="list-group-item list-group-item-action {% if request.endpoint == 'financeiro' %}active{% endif %}" onclick="mostrarSpinner()">
-                        <i class="fas fa-wallet me-2"></i> Mensalidades
+                        <i class="fas fa-wallet me-2"></i> <span class="item-text">Mensalidades</span>
                     </a>
                     {% endif %}
                     {% if current_user.papel in ['gestora','professora'] %}
                     <a href="{{ url_for('acompanhamento') }}" class="list-group-item list-group-item-action {% if request.endpoint == 'acompanhamento' %}active{% endif %}" onclick="mostrarSpinner()">
-                        <i class="fas fa-book-open me-2"></i> Acompanhamento
+                        <i class="fas fa-book-open me-2"></i> <span class="item-text">Acompanhamento</span>
                     </a>
                     {% endif %}
                     {% if current_user.papel == 'gestora' %}
                     <a href="{{ url_for('relatorios') }}" class="list-group-item list-group-item-action {% if request.endpoint == 'relatorios' %}active{% endif %}" onclick="mostrarSpinner()">
-                        <i class="fas fa-chart-pie me-2"></i> Relatórios
+                        <i class="fas fa-chart-pie me-2"></i> <span class="item-text">Relatórios</span>
+                    </a>
+                    <a href="{{ url_for('instrumentos') }}" class="list-group-item list-group-item-action {% if request.endpoint == 'instrumentos' %}active{% endif %}" onclick="mostrarSpinner()">
+                        <i class="fas fa-guitar me-2"></i> <span class="item-text">Instrumentos</span>
+                    </a>
+                    <a href="{{ url_for('usuarios') }}" class="list-group-item list-group-item-action {% if request.endpoint == 'usuarios' %}active{% endif %}" onclick="mostrarSpinner()">
+                        <i class="fas fa-user-gear me-2"></i> <span class="item-text">Usuários</span>
                     </a>
                     {% endif %}
                     {% if current_user.papel == 'aluno' %}
                     <a href="{{ url_for('minha_area') }}" class="list-group-item list-group-item-action {% if request.endpoint == 'minha_area' %}active{% endif %}" onclick="mostrarSpinner()">
-                        <i class="fas fa-graduation-cap me-2"></i> Minha Área
+                        <i class="fas fa-graduation-cap me-2"></i> <span class="item-text">Minha Área</span>
                     </a>
                     {% endif %}
                 </div>
-            </div>
-            <div class="col-md-10 main-content">
-            {% else %}
-            <div class="col-md-12 main-content">
-            {% endif %}
-                {% with messages = get_flashed_messages(with_categories=true) %}
-                {% if messages %}
-                    {% for category, message in messages %}
-                    <div class="alert alert-{{ category|default('info') }} alert-dismissible fade show flash-message" role="alert">
-                        {{ message }}
-                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                    </div>
-                    {% endfor %}
-                {% endif %}
-                {% endwith %}
-
-                {% block content %}{% endblock %}
-            </div>
         </div>
+        <div class="main-content">
+    {% else %}
+    <div class="container-fluid main-content">
+    {% endif %}
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+            <div class="alert alert-{{ category|default('info') }} alert-dismissible fade show flash-message" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+            {% endfor %}
+        {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+        </div>
+    {% if current_user.is_authenticated %}
     </div>
+    {% endif %}
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.5/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.0/dist/chart.min.js"></script>
@@ -181,6 +254,78 @@
             if (s) s.style.display = 'none';
         }
         window.addEventListener('load', esconderSpinner);
+
+        // Recolher/expandir o menu lateral.
+        // Desktop (>=992px): estado é persistido entre páginas (recolhido = só ícones).
+        // Mobile (<992px): a sidebar vira off-canvas e começa sempre fechada.
+        (function() {
+            const layout = document.getElementById('app-layout');
+            if (!layout) return;
+            const ehMobile = () => window.matchMedia('(max-width: 991.98px)').matches;
+
+            // Sincroniza o ícone com o estado: seta para a esquerda quando o menu
+            // está aberto (clicar recolhe) e para a direita quando fechado (clicar abre).
+            function atualizarIcone() {
+                const icone = document.getElementById('sidebar-toggle-icon');
+                if (!icone) return;
+                const fechado = layout.classList.contains('sidebar-collapsed');
+                // Olho aberto = menu visível/aberto; olho cortado = menu oculto/fechado.
+                icone.classList.toggle('fa-eye-slash', fechado);
+                icone.classList.toggle('fa-eye', !fechado);
+            }
+
+            function aplicarEstadoInicial() {
+                if (ehMobile()) {
+                    // No mobile a sidebar começa fechada (recolhida = escondida).
+                    layout.classList.add('sidebar-collapsed');
+                } else if (localStorage.getItem('sidebarCollapsed') === '1') {
+                    layout.classList.add('sidebar-collapsed');
+                } else {
+                    layout.classList.remove('sidebar-collapsed');
+                }
+                atualizarIcone();
+            }
+            aplicarEstadoInicial();
+
+            document.addEventListener('DOMContentLoaded', function() {
+                atualizarIcone();
+                const btn = document.getElementById('sidebar-toggle');
+                const backdrop = document.getElementById('sidebar-backdrop');
+                if (btn) {
+                    btn.addEventListener('click', function() {
+                        const recolhido = layout.classList.toggle('sidebar-collapsed');
+                        // Só persiste a preferência no desktop.
+                        if (!ehMobile()) {
+                            localStorage.setItem('sidebarCollapsed', recolhido ? '1' : '0');
+                        }
+                        atualizarIcone();
+                    });
+                }
+                // Tocar no fundo escurecido fecha a sidebar (apenas mobile).
+                if (backdrop) {
+                    backdrop.addEventListener('click', function() {
+                        layout.classList.add('sidebar-collapsed');
+                        atualizarIcone();
+                    });
+                }
+                // Ao navegar por um item no mobile, fecha a sidebar.
+                document.querySelectorAll('#sidebar .list-group-item').forEach(function(link) {
+                    link.addEventListener('click', function() {
+                        if (ehMobile()) { layout.classList.add('sidebar-collapsed'); atualizarIcone(); }
+                    });
+                });
+                // Reajusta ao redimensionar (ex.: girar o tablet).
+                let ultimoModo = ehMobile();
+                window.addEventListener('resize', function() {
+                    const modoAtual = ehMobile();
+                    if (modoAtual !== ultimoModo) {
+                        ultimoModo = modoAtual;
+                        aplicarEstadoInicial();
+                    }
+                });
+            });
+        })();
+
         document.addEventListener('DOMContentLoaded', function() {
             esconderSpinner();
             const flashMessages = document.querySelectorAll('.flash-message');
