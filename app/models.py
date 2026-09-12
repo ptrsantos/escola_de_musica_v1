@@ -260,7 +260,9 @@ class Aula(db.Model):
 # Funções utilitárias (adaptadas do fluxo de caixa).
 # ---------------------------------------------------------------------------
 def format_currency(value):
-    return f"R$ {value:.2f}".replace('.', ',')
+    # Padrão brasileiro com separador de milhar (ex.: R$ 1.234,50)
+    formatado = f"{value:,.2f}"
+    return "R$ " + formatado.replace(',', 'X').replace('.', ',').replace('X', '.')
 
 
 def get_first_day_of_month():

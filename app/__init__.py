@@ -92,6 +92,18 @@ def create_app():
         from app.models import DIAS_SEMANA_PT
         return {'now': datetime.now, 'DIAS_SEMANA_PT': DIAS_SEMANA_PT}
 
+    # Filtro para formatar valores monetários no padrão brasileiro, com
+    # separador de milhar e vírgula decimal (ex.: 1234.5 -> "1.234,50").
+    @app.template_filter('moeda')
+    def moeda(valor):
+        try:
+            valor = float(valor or 0)
+        except (TypeError, ValueError):
+            valor = 0.0
+        # Formata no padrão en-US (1,234.50) e troca os separadores para pt-BR.
+        formatado = f'{valor:,.2f}'
+        return formatado.replace(',', 'X').replace('.', ',').replace('X', '.')
+
     # Importar modelos após criar db para evitar importações circulares
     from app.models import Usuario, Instrumento, Aluno, Mensalidade, Pagamento, Aula
 

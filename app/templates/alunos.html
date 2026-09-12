@@ -33,7 +33,7 @@
                     <tr>
                         <td><strong>{{ aluno.nome }}</strong><br><small class="text-muted">{{ aluno.endereco or 'Endereço não informado' }}</small></td>
                         <td>{{ aluno.instrumento.nome }}</td>
-                        <td>R$ {{ "%.2f"|format(aluno.mensalidade_base)|replace(".", ",") }}</td>
+                        <td>R$ {{ aluno.mensalidade_base|moeda }}</td>
                         <td>{% if aluno.inadimplente %}<span class="inadimplente">Inadimplente</span>{% else %}<span class="adimplente">Adimplente</span>{% endif %}</td>
                         <td><span class="badge-risco risco-{{ 'alto' if aluno.risco=='alto' else 'medio' if aluno.risco=='médio' else 'baixo' }}">{{ aluno.risco|capitalize }}</span></td>
                         <td>

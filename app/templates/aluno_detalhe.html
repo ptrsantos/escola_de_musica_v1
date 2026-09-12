@@ -29,7 +29,7 @@
                     <dt class="col-5">E-mail</dt><dd class="col-7">{{ aluno.email or '—' }}</dd>
                     <dt class="col-5">Instrumento</dt><dd class="col-7">{{ aluno.instrumento.nome }}</dd>
                     <dt class="col-5">Aula</dt><dd class="col-7">{{ aluno.horario_aula_descricao or 'Sem horário fixo' }}</dd>
-                    <dt class="col-5">Mensalidade</dt><dd class="col-7">R$ {{ "%.2f"|format(aluno.mensalidade_base)|replace(".", ",") }}</dd>
+                    <dt class="col-5">Mensalidade</dt><dd class="col-7">R$ {{ aluno.mensalidade_base|moeda }}</dd>
                     <dt class="col-5">Status</dt><dd class="col-7">{{ aluno.status|capitalize }}</dd>
                 </dl>
             </div>
@@ -46,7 +46,7 @@
                     </div>
                     <div class="col">
                         <div class="text-muted small">Valor em aberto</div>
-                        <strong>R$ {{ "%.2f"|format(aluno.valor_em_aberto)|replace(".", ",") }}</strong>
+                        <strong>R$ {{ aluno.valor_em_aberto|moeda }}</strong>
                     </div>
                     <div class="col">
                         <div class="text-muted small">Risco de evasão</div>
@@ -71,8 +71,8 @@
                     <tr>
                         <td>{{ m.competencia }}</td>
                         <td>{{ m.vencimento.strftime('%d/%m/%Y') }}</td>
-                        <td>R$ {{ "%.2f"|format(m.valor)|replace(".", ",") }}</td>
-                        <td>R$ {{ "%.2f"|format(m.valor_pago)|replace(".", ",") }}</td>
+                        <td>R$ {{ m.valor|moeda }}</td>
+                        <td>R$ {{ m.valor_pago|moeda }}</td>
                         <td><span class="badge text-bg-{{ 'success' if m.status=='pago' else ('danger' if m.status=='em atraso' else 'warning') }}">{{ m.status|capitalize }}</span></td>
                     </tr>
                     {% else %}

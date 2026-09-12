@@ -21,7 +21,7 @@
                 <div class="text-success me-3"><i class="fas fa-hand-holding-dollar fa-2x"></i></div>
                 <div>
                     <div class="text-muted small">Entradas de hoje</div>
-                    <h3 class="mb-0 text-success">R$ {{ "%.2f"|format(entradas_hoje)|replace(".", ",") }}</h3>
+                    <h3 class="mb-0 text-success">R$ {{ entradas_hoje|moeda }}</h3>
                 </div>
             </div>
         </div>
@@ -32,7 +32,7 @@
                 <div class="text-primary me-3"><i class="fas fa-coins fa-2x"></i></div>
                 <div class="flex-grow-1">
                     <div class="text-muted small">Entradas do mês</div>
-                    <h3 class="mb-0 text-primary">R$ {{ "%.2f"|format(entradas_mes)|replace(".", ",") }}</h3>
+                    <h3 class="mb-0 text-primary">R$ {{ entradas_mes|moeda }}</h3>
                 </div>
                 {% if current_user.papel == 'gestora' %}
                 <a href="{{ url_for('financeiro') }}" class="btn btn-sm btn-outline-primary align-self-start" onclick="mostrarSpinner()">Ver financeiro</a>

@@ -12,19 +12,19 @@
     <div class="col-md-4">
         <div class="card card-metric shadow-sm"><div class="card-body text-center">
             <div class="metric-icon text-primary mb-2"><i class="fas fa-coins fa-2x"></i></div>
-            <h6>Previsto</h6><h3 class="text-primary">R$ {{ "%.2f"|format(total_previsto)|replace(".", ",") }}</h3>
+            <h6>Previsto</h6><h3 class="text-primary">R$ {{ total_previsto|moeda }}</h3>
         </div></div>
     </div>
     <div class="col-md-4">
         <div class="card card-metric shadow-sm"><div class="card-body text-center">
             <div class="metric-icon text-success mb-2"><i class="fas fa-hand-holding-dollar fa-2x"></i></div>
-            <h6>Recebido</h6><h3 class="text-success">R$ {{ "%.2f"|format(total_recebido)|replace(".", ",") }}</h3>
+            <h6>Recebido</h6><h3 class="text-success">R$ {{ total_recebido|moeda }}</h3>
         </div></div>
     </div>
     <div class="col-md-4">
         <div class="card card-metric shadow-sm"><div class="card-body text-center">
             <div class="metric-icon text-danger mb-2"><i class="fas fa-triangle-exclamation fa-2x"></i></div>
-            <h6>Em aberto</h6><h3 class="text-danger">R$ {{ "%.2f"|format(em_aberto)|replace(".", ",") }}</h3>
+            <h6>Em aberto</h6><h3 class="text-danger">R$ {{ em_aberto|moeda }}</h3>
         </div></div>
     </div>
 </div>
@@ -42,7 +42,7 @@
                         <td>{{ aluno.instrumento.nome }}</td>
                         <td>{{ aluno.status|capitalize }}</td>
                         <td>{% if aluno.inadimplente %}<span class="inadimplente">Inadimplente</span>{% else %}<span class="adimplente">Adimplente</span>{% endif %}</td>
-                        <td>R$ {{ "%.2f"|format(aluno.valor_em_aberto)|replace(".", ",") }}</td>
+                        <td>R$ {{ aluno.valor_em_aberto|moeda }}</td>
                         <td><span class="badge-risco risco-{{ 'alto' if aluno.risco=='alto' else 'medio' if aluno.risco=='médio' else 'baixo' }}">{{ aluno.risco|capitalize }}</span></td>
                     </tr>
                     {% else %}

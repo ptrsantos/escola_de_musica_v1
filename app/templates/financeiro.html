@@ -22,8 +22,8 @@
                         <td class="fw-semibold">{{ m.aluno.nome }}</td>
                         <td>{{ m.competencia }}</td>
                         <td>{{ m.vencimento.strftime('%d/%m/%Y') }}</td>
-                        <td>R$ {{ "%.2f"|format(m.valor)|replace(".", ",") }}</td>
-                        <td>R$ {{ "%.2f"|format(m.valor_pago)|replace(".", ",") }}</td>
+                        <td>R$ {{ m.valor|moeda }}</td>
+                        <td>R$ {{ m.valor_pago|moeda }}</td>
                         <td><span class="badge text-bg-{{ 'success' if m.status=='pago' else ('danger' if m.status=='em atraso' else 'warning') }}">{{ m.status|capitalize }}</span></td>
                         <td class="text-end">
                             <div class="btn-group btn-group-sm">
@@ -128,7 +128,7 @@
                         {% for p in m.pagamentos %}
                         <tr>
                             <td>{{ p.data_pagamento.strftime('%d/%m/%Y') }}</td>
-                            <td>R$ {{ "%.2f"|format(p.valor)|replace(".", ",") }}</td>
+                            <td>R$ {{ p.valor|moeda }}</td>
                             <td class="small text-muted">{{ p.observacao or '—' }}</td>
                             <td class="text-end">
                                 <form method="POST" action="{{ url_for('editar_pagamento', id=p.id) }}" class="d-inline-flex gap-1 align-items-center">
