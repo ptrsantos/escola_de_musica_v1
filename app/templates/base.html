@@ -71,6 +71,7 @@
                     {% endif %}
                     {% if current_user.papel == 'gestora' %}
                     <li class="nav-item"><a class="nav-link {% if request.endpoint == 'relatorios' %}active{% endif %}" href="{{ url_for('relatorios') }}" onclick="mostrarSpinner()">Relatórios</a></li>
+                    <li class="nav-item"><a class="nav-link {% if request.endpoint == 'registrar' %}active{% endif %}" href="{{ url_for('registrar') }}" onclick="mostrarSpinner()">Usuários</a></li>
                     {% endif %}
                     {% if current_user.papel == 'aluno' %}
                     <li class="nav-item"><a class="nav-link {% if request.endpoint == 'minha_area' %}active{% endif %}" href="{{ url_for('minha_area') }}" onclick="mostrarSpinner()">Minha Área</a></li>
@@ -117,6 +118,9 @@
                     {% if current_user.papel == 'gestora' %}
                     <a href="{{ url_for('relatorios') }}" class="list-group-item list-group-item-action {% if request.endpoint == 'relatorios' %}active{% endif %}" onclick="mostrarSpinner()">
                         <i class="fas fa-chart-pie me-2"></i> Relatórios
+                    </a>
+                    <a href="{{ url_for('registrar') }}" class="list-group-item list-group-item-action {% if request.endpoint == 'registrar' %}active{% endif %}" onclick="mostrarSpinner()">
+                        <i class="fas fa-user-plus me-2"></i> Usuários
                     </a>
                     {% endif %}
                     {% if current_user.papel == 'aluno' %}

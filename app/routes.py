@@ -1,13 +1,16 @@
-from datetime import datetime, date, timedelta
+from datetime import datetime, date
 from functools import wraps
 
 from flask import render_template, request, redirect, url_for, flash, abort, jsonify
 from flask_login import login_user, login_required, logout_user, current_user
-from sqlalchemy import func
+from sqlalchemy import func, select
+from sqlalchemy.orm import joinedload, contains_eager, selectinload
 
 from app import db
 from app.models import (Usuario, Instrumento, Aluno, Mensalidade, Pagamento, Aula,
-                        format_date_for_form)
+                        format_date_for_form, ultimos_meses)
+
+MENSALIDADES_POR_PAGINA = 50
 
 
 def papeis_required(*papeis):
@@ -28,6 +31,20 @@ def parse_date(value):
     return datetime.strptime(value, '%Y-%m-%d').date() if value else None
 
 
+def atualizar_status_vencidos():
+    """Antes de qualquer página financeira: pendente → em atraso, em um UPDATE."""
+    Mensalidade.atualizar_vencidas()
+    db.session.commit()
+
+
+def totais_financeiros():
+    """(previsto, recebido) somados no banco. Recebido é a soma de todos os
+    pagamentos — o mesmo que somar valor_pago de todas as mensalidades."""
+    previsto = db.session.scalar(select(func.coalesce(func.sum(Mensalidade.valor), 0.0)))
+    recebido = db.session.scalar(select(func.coalesce(func.sum(Pagamento.valor), 0.0)))
+    return previsto, recebido
+
+
 def register_routes(app):
     # =================================================================
     # Home / autenticação (mesma estrutura do fluxo de caixa)
@@ -40,29 +57,59 @@ def register_routes(app):
 
     @app.route('/registrar', methods=['GET', 'POST'])
     def registrar():
-        if current_user.is_authenticated:
-            return redirect(url_for('dashboard'))
+        # Cadastro de usuários NÃO é público. Duas situações permitem acesso:
+        #   1. Instalação nova, sem nenhum usuário: a primeira conta criada é
+        #      obrigatoriamente a gestora (bootstrap).
+        #   2. Depois disso, apenas a gestora logada cadastra novos usuários
+        #      e escolhe o perfil de cada um.
+        # Antes, qualquer visitante criava uma conta e escolhia ser gestora.
+        primeiro_acesso = Usuario.query.first() is None
+        if not primeiro_acesso:
+            if not current_user.is_authenticated:
+                flash('Faça login para continuar.', 'warning')
+                return redirect(url_for('login', next=request.path))
+            if not current_user.is_gestora:
+                flash('Apenas a gestora pode cadastrar usuários.', 'danger')
+                return redirect(url_for('dashboard'))
+
         if request.method == 'POST':
-            nome = request.form.get('nome')
+            nome = (request.form.get('nome') or '').strip()
             email = (request.form.get('email') or '').strip().lower()
-            senha = request.form.get('senha')
-            papel = request.form.get('papel', 'gestora')
+            senha = request.form.get('senha') or ''
+
+            if primeiro_acesso:
+                papel = Usuario.PAPEL_GESTORA
+            else:
+                papel = request.form.get('papel', Usuario.PAPEL_ALUNO)
+                if papel not in (Usuario.PAPEL_GESTORA, Usuario.PAPEL_PROFESSORA,
+                                 Usuario.PAPEL_ALUNO):
+                    papel = Usuario.PAPEL_ALUNO
+
+            if not nome or not email or len(senha) < 6:
+                flash('Preencha nome, e-mail e uma senha com pelo menos 6 caracteres.', 'danger')
+                return render_template('registrar.html', primeiro_acesso=primeiro_acesso)
 
             if Usuario.query.filter_by(email=email).first():
-                flash('Email já registrado. Faça login.', 'warning')
-                return redirect(url_for('login'))
+                flash('Já existe um usuário com este e-mail.', 'warning')
+                return render_template('registrar.html', primeiro_acesso=primeiro_acesso)
 
             novo_usuario = Usuario(nome=nome, email=email, papel=papel)
             novo_usuario.set_senha(senha)
             try:
                 db.session.add(novo_usuario)
                 db.session.commit()
-                flash('Conta criada com sucesso! Faça login.', 'success')
-                return redirect(url_for('login'))
             except Exception as e:
                 db.session.rollback()
                 flash(f'Erro ao criar conta: {str(e)}', 'danger')
-        return render_template('registrar.html')
+                return render_template('registrar.html', primeiro_acesso=primeiro_acesso)
+
+            if primeiro_acesso:
+                flash('Conta da gestora criada. Faça login para continuar.', 'success')
+                return redirect(url_for('login'))
+            flash(f'Usuário "{nome}" cadastrado como {papel}.', 'success')
+            return redirect(url_for('registrar'))
+
+        return render_template('registrar.html', primeiro_acesso=primeiro_acesso)
 
     @app.route('/login', methods=['GET', 'POST'])
     def login():
@@ -95,21 +142,21 @@ def register_routes(app):
         if current_user.is_aluno:
             return redirect(url_for('minha_area'))
 
-        alunos = Aluno.query.filter_by(status='ativo').all()
+        atualizar_status_vencidos()
 
-        # Atualiza status financeiro de todas as mensalidades
-        mensalidades = Mensalidade.query.all()
-        for m in mensalidades:
-            m.atualizar_status()
-        db.session.commit()
+        # Os alunos vêm com qtd_em_atraso / valor_em_aberto / ultima_aula já
+        # calculados no SELECT (column_property) — risco e inadimplência são
+        # aritmética em memória, sem tocar no banco de novo.
+        alunos = (Aluno.query.filter_by(status='ativo')
+                  .options(joinedload(Aluno.instrumento)).all())
 
         total_alunos = len(alunos)
         inadimplentes = sum(1 for a in alunos if a.inadimplente)
         adimplentes = total_alunos - inadimplentes
-        total_atrasadas = sum(1 for m in mensalidades if m.status == 'em atraso')
+        total_atrasadas = db.session.scalar(
+            select(func.count()).select_from(Mensalidade).where(Mensalidade.status == 'em atraso'))
 
-        total_previsto = sum(m.valor for m in mensalidades)
-        total_recebido = sum(m.valor_pago for m in mensalidades)
+        total_previsto, total_recebido = totais_financeiros()
 
         # Distribuição de alunos por instrumento (para o gráfico de pizza)
         por_instrumento = db.session.query(
@@ -126,19 +173,17 @@ def register_routes(app):
             riscos[a.risco] += 1
 
         # Recebido nos últimos 6 meses (para o gráfico de linha) — recebido por
-        # mês de referência da mensalidade
-        seis_meses = []
-        hoje = date.today().replace(day=1)
-        for i in range(5, -1, -1):
-            ref = (hoje - timedelta(days=i * 30)).strftime('%Y-%m')
-            seis_meses.append(ref)
-        recebido_por_mes = {ref: 0.0 for ref in seis_meses}
-        for m in mensalidades:
-            if m.competencia in recebido_por_mes:
-                recebido_por_mes[m.competencia] += m.valor_pago
+        # mês de referência (competência) da mensalidade, agrupado no banco
+        seis_meses = ultimos_meses(6)
+        recebido_por_mes = dict(db.session.execute(
+            select(Mensalidade.competencia, func.sum(Pagamento.valor))
+            .join(Pagamento, Pagamento.mensalidade_id == Mensalidade.id)
+            .where(Mensalidade.competencia.in_(seis_meses))
+            .group_by(Mensalidade.competencia)
+        ).all())
         dados_recebido = {
             'meses': seis_meses,
-            'valores': [round(recebido_por_mes[ref], 2) for ref in seis_meses],
+            'valores': [round(recebido_por_mes.get(ref, 0.0), 2) for ref in seis_meses],
         }
 
         # Alunos que pedem atenção (risco médio ou alto)
@@ -164,6 +209,7 @@ def register_routes(app):
     @app.route('/api/dashboard-data')
     @papeis_required('gestora', 'professora')
     def dashboard_data():
+        atualizar_status_vencidos()
         alunos = Aluno.query.filter_by(status='ativo').all()
         riscos = {'baixo': 0, 'médio': 0, 'alto': 0}
         for a in alunos:
@@ -185,8 +231,9 @@ def register_routes(app):
     @app.route('/alunos')
     @papeis_required('gestora', 'professora')
     def alunos():
+        atualizar_status_vencidos()
         busca = (request.args.get('busca') or '').strip()
-        consulta = Aluno.query.order_by(Aluno.nome)
+        consulta = Aluno.query.options(joinedload(Aluno.instrumento)).order_by(Aluno.nome)
         if busca:
             consulta = consulta.filter(Aluno.nome.ilike(f'%{busca}%'))
         return render_template(
@@ -223,15 +270,13 @@ def register_routes(app):
     @app.route('/aluno/<int:id>')
     @login_required
     def aluno_detalhe(id):
+        atualizar_status_vencidos()
         aluno = db.get_or_404(Aluno, id)
         # Aluno só acessa a própria ficha
         if current_user.is_aluno:
             vinculo = Aluno.query.filter_by(email=current_user.email).first()
             if not vinculo or vinculo.id != aluno.id:
                 abort(403)
-        for m in aluno.mensalidades:
-            m.atualizar_status()
-        db.session.commit()
         instrumentos = Instrumento.query.order_by(Instrumento.nome).all()
         return render_template('aluno_detalhe.html', aluno=aluno, instrumentos=instrumentos)
 
@@ -269,14 +314,33 @@ def register_routes(app):
     @app.route('/financeiro')
     @papeis_required('gestora')
     def financeiro():
-        mensalidades = Mensalidade.query.join(Aluno).order_by(Mensalidade.vencimento.desc()).all()
-        for m in mensalidades:
-            m.atualizar_status()
-        db.session.commit()
+        atualizar_status_vencidos()
+
+        # Filtros (querystring) + paginação: com ~10 mil mensalidades a página
+        # inteira tinha 11 MB de HTML.
+        status = request.args.get('status') or ''
+        if status not in Mensalidade.STATUS:
+            status = ''
+        busca = (request.args.get('busca') or '').strip()
+        pagina = request.args.get('page', 1, type=int)
+
+        consulta = (Mensalidade.query.join(Aluno)
+                    .options(contains_eager(Mensalidade.aluno))
+                    .order_by(Mensalidade.vencimento.desc(), Mensalidade.id.desc()))
+        if status:
+            consulta = consulta.filter(Mensalidade.status == status)
+        if busca:
+            consulta = consulta.filter(Aluno.nome.ilike(f'%{busca}%'))
+        paginacao = consulta.paginate(page=pagina, per_page=MENSALIDADES_POR_PAGINA, error_out=False)
+
         return render_template(
             'financeiro.html',
-            mensalidades=mensalidades,
-            alunos=Aluno.query.filter_by(status='ativo').order_by(Aluno.nome).all(),
+            mensalidades=paginacao.items,
+            paginacao=paginacao,
+            status=status,
+            busca=busca,
+            alunos=(Aluno.query.filter_by(status='ativo')
+                    .options(joinedload(Aluno.instrumento)).order_by(Aluno.nome).all()),
             hoje=format_date_for_form(date.today()),
         )
 
@@ -302,9 +366,10 @@ def register_routes(app):
     @papeis_required('gestora')
     def registrar_pagamento(id):
         m = db.get_or_404(Mensalidade, id)
-        valor = float(request.form.get('valor') or (m.valor - m.valor_pago))
-        db.session.add(Pagamento(
-            mensalidade_id=m.id,
+        valor = float(request.form.get('valor') or (m.valor - m.total_pago()))
+        # Anexar à coleção (e não só gravar por mensalidade_id) garante que
+        # atualizar_status() enxergue o pagamento recém-criado.
+        m.pagamentos.append(Pagamento(
             valor=valor,
             data_pagamento=parse_date(request.form.get('data_pagamento')) or date.today(),
             observacao=request.form.get('observacao'),
@@ -334,7 +399,10 @@ def register_routes(app):
             return redirect(url_for('acompanhamento'))
         return render_template(
             'acompanhamento.html',
-            aulas=Aula.query.join(Aluno).order_by(Aula.data.desc()).all(),
+            # selectinload: os alunos distintos vêm numa 2ª consulta, em vez de
+            # repetir as colunas calculadas do aluno em cada uma das ~1.400 aulas
+            aulas=(Aula.query.options(selectinload(Aula.aluno))
+                   .order_by(Aula.data.desc()).all()),
             alunos=Aluno.query.filter_by(status='ativo').order_by(Aluno.nome).all(),
             hoje=format_date_for_form(date.today()),
         )
@@ -345,15 +413,13 @@ def register_routes(app):
     @app.route('/minha-area')
     @papeis_required('aluno')
     def minha_area():
+        atualizar_status_vencidos()
         aluno = Aluno.query.filter_by(email=current_user.email).first()
         if not aluno:
             flash('Seu usuário ainda não está vinculado a um cadastro de aluno.', 'warning')
             return render_template('minha_area.html', aluno=None, mensalidades=[], aulas=[])
         mensalidades = (Mensalidade.query.filter_by(aluno_id=aluno.id)
                         .order_by(Mensalidade.vencimento.desc()).all())
-        for m in mensalidades:
-            m.atualizar_status()
-        db.session.commit()
         aulas = Aula.query.filter_by(aluno_id=aluno.id).order_by(Aula.data.desc()).all()
         return render_template('minha_area.html', aluno=aluno, mensalidades=mensalidades, aulas=aulas)
 
@@ -363,13 +429,9 @@ def register_routes(app):
     @app.route('/relatorios')
     @papeis_required('gestora')
     def relatorios():
-        alunos = Aluno.query.order_by(Aluno.nome).all()
-        mensalidades = Mensalidade.query.all()
-        for m in mensalidades:
-            m.atualizar_status()
-        db.session.commit()
-        total_previsto = sum(m.valor for m in mensalidades)
-        total_recebido = sum(m.valor_pago for m in mensalidades)
+        atualizar_status_vencidos()
+        alunos = Aluno.query.options(joinedload(Aluno.instrumento)).order_by(Aluno.nome).all()
+        total_previsto, total_recebido = totais_financeiros()
         return render_template(
             'relatorios.html',
             alunos=alunos,

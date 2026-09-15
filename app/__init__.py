@@ -1,8 +1,9 @@
 import os
-from flask import Flask
+from flask import Flask, flash, redirect, request, url_for
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 from flask_migrate import Migrate
+from flask_wtf.csrf import CSRFProtect, CSRFError
 from datetime import datetime
 
 # Carrega variáveis definidas em um arquivo .env (usado no ambiente local).
@@ -18,6 +19,10 @@ except ImportError:
 db = SQLAlchemy()
 migrate = Migrate()
 login_manager = LoginManager()
+# Proteção CSRF global: todo POST precisa trazer o token gerado por
+# csrf_token() no formulário. Sem isso, um site malicioso poderia
+# disparar exclusões e pagamentos em nome de um usuário logado.
+csrf = CSRFProtect()
 
 # ---------------------------------------------------------------------------
 # Parâmetros da regra de ANÁLISE DE RISCO DE EVASÃO.
@@ -60,7 +65,9 @@ def _resolver_database_uri():
     return database_url
 
 
-def create_app():
+def create_app(config=None):
+    """Cria a aplicação. ``config`` (dict) sobrescreve as opções padrão — usado
+    pelos testes para apontar para um SQLite em memória e desligar o CSRF."""
     app = Flask(__name__)
     app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'chave-secreta-escola-musica')
 
@@ -78,12 +85,22 @@ def create_app():
 
     app.config['RISK_CONFIG'] = RISK_CONFIG
 
+    if config:
+        app.config.update(config)
+
     # Inicializar extensões com a aplicação
     db.init_app(app)
     migrate.init_app(app, db)
+    csrf.init_app(app)
 
     login_manager.init_app(app)
     login_manager.login_view = 'login'
+
+    # Token CSRF ausente ou inválido: em vez do erro 400 seco, avisa e volta.
+    @app.errorhandler(CSRFError)
+    def csrf_invalido(e):
+        flash('Sua sessão expirou ou o formulário é inválido. Tente novamente.', 'warning')
+        return redirect(request.referrer or url_for('home'))
 
     # Context processor para disponibilizar a data atual em todos os templates
     @app.context_processor
@@ -106,7 +123,26 @@ def create_app():
 
 
 def init_db(app):
+    """Cria o que falta no banco: tabelas, índices e instrumentos padrão.
+    Seguro em base já populada (não apaga nada)."""
     with app.app_context():
         db.create_all()
+        garantir_indices()
         from app.models import inicializar_instrumentos
         inicializar_instrumentos()
+
+
+def garantir_indices():
+    """db.create_all() só cria tabelas novas; índices declarados depois em
+    tabelas que já existiam (ex.: os das chaves estrangeiras, adicionados na
+    correção de desempenho) precisam ser criados à parte. Idempotente."""
+    from sqlalchemy import inspect
+    inspector = inspect(db.engine)
+    criados = []
+    for tabela in db.metadata.sorted_tables:
+        existentes = {i['name'] for i in inspector.get_indexes(tabela.name)}
+        for indice in tabela.indexes:
+            if indice.name not in existentes:
+                indice.create(db.engine)
+                criados.append(indice.name)
+    return criados

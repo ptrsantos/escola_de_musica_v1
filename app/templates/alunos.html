@@ -62,6 +62,7 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <form method="POST" action="{{ url_for('adicionar_aluno') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="modal-header"><h5 class="modal-title">Novo aluno</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                 <div class="modal-body">
                     <div class="mb-3"><label class="form-label">Nome completo *</label><input type="text" class="form-control" name="nome" required></div>
@@ -92,7 +93,8 @@
             <div class="modal-body"><p>Tem certeza que deseja remover o aluno <strong id="aluno-nome"></strong>?</p><p class="text-danger"><small>Esta ação não pode ser desfeita.</small></p></div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <form id="delete-form" method="POST"><button type="submit" class="btn btn-danger">Excluir</button></form>
+                <form id="delete-form" method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn btn-danger">Excluir</button></form>
             </div>
         </div>
     </div>
