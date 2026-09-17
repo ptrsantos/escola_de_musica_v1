@@ -231,3 +231,28 @@ def test_acompanhamento_registra_aula(dados, app, client):
         assert aula.professora == 'Flávia (Professora)' and aula.data == date.today()
     html = texto(client.get('/acompanhamento'))
     assert 'Primeira aula' in html
+
+
+def test_dashboard_pagina_os_alunos_que_pedem_atencao(app):
+    """Mais de 10 alunos em atenção: as linhas saem numeradas por página
+    (data-pagina) e o rodapé de paginação aparece; até 10, não."""
+    from conftest import novo_usuario, novo_aluno, nova_mensalidade
+    from app.models import Usuario
+    with app.app_context():
+        novo_usuario('Gestora', 'gestora@escola.com', Usuario.PAPEL_GESTORA)
+        for i in range(12):                              # 1 vencida cada -> risco médio (25)
+            nova_mensalidade(novo_aluno(f'Aluno {i:02d}'), 1, False)
+        db.session.commit()
+    client = app.test_client()
+    logar_gestora(client)
+    html = texto(client.get('/dashboard'))
+    assert html.count('data-pagina="0"') == 10 and html.count('data-pagina="1"') == 2
+    assert 'id="paginacaoAtencao"' in html and 'data-por-pagina="10"' in html
+
+    with app.app_context():
+        for a in Aluno.query.order_by(Aluno.nome.desc()).limit(2).all():
+            a.status = 'inativo'                         # sobram 10 em atenção
+        db.session.commit()
+    html = texto(client.get('/dashboard'))
+    assert html.count('data-pagina="0"') == 10 and 'data-pagina="1"' not in html
+    assert 'id="paginacaoAtencao"' not in html

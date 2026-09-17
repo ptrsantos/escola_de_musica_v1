@@ -99,13 +99,13 @@
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
-                        <table class="table table-hover mb-0">
+                        <table class="table table-hover mb-0" id="tabelaAtencao" data-por-pagina="{{ atencao_por_pagina }}">
                             <thead class="table-light">
                                 <tr><th>Aluno</th><th>Instrumento</th><th>Situação</th><th>Fatores</th><th>Risco</th></tr>
                             </thead>
                             <tbody>
                                 {% for aluno in alunos_atencao %}
-                                <tr>
+                                <tr data-pagina="{{ loop.index0 // atencao_por_pagina }}">
                                     <td><a href="{{ url_for('aluno_detalhe', id=aluno.id) }}" onclick="mostrarSpinner()">{{ aluno.nome }}</a></td>
                                     <td>{{ aluno.instrumento.nome }}</td>
                                     <td>{% if aluno.inadimplente %}<span class="inadimplente">Inadimplente</span>{% else %}<span class="adimplente">Adimplente</span>{% endif %}</td>
@@ -119,6 +119,12 @@
                         </table>
                     </div>
                 </div>
+                {% if alunos_atencao|length > atencao_por_pagina %}
+                <div class="card-footer bg-white d-flex justify-content-between align-items-center flex-wrap gap-2 small" id="paginacaoAtencao">
+                    <span class="text-muted" id="paginacaoAtencaoInfo"></span>
+                    <nav aria-label="Páginas dos alunos que pedem atenção"><ul class="pagination pagination-sm mb-0" id="paginacaoAtencaoLinks"></ul></nav>
+                </div>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -279,6 +285,39 @@ document.addEventListener('DOMContentLoaded', function() {
                     return ctx.parsed.x + '% · ' + r.alunos + ' aluno(s), ' + r.aulas + ' aula(s), ' + r.faltas + ' falta(s)'; } } } },
                 scales: { x: { min: 0, max: 100, ticks: { callback: v => v + '%' } } } }
         });
+    }
+
+    // Alunos que pedem atenção: 10 por página (as linhas já vêm ordenadas por score;
+    // a paginação só esconde/mostra, sem nova requisição)
+    const tabelaAtencao = document.getElementById('tabelaAtencao');
+    const linksAtencao = document.getElementById('paginacaoAtencaoLinks');
+    if (tabelaAtencao && linksAtencao) {
+        const linhas = [...tabelaAtencao.querySelectorAll('tbody tr[data-pagina]')];
+        const porPagina = parseInt(tabelaAtencao.dataset.porPagina, 10);
+        const total = linhas.length, paginas = Math.ceil(total / porPagina);
+        const info = document.getElementById('paginacaoAtencaoInfo');
+        function mostrarPagina(p) {
+            p = Math.max(0, Math.min(paginas - 1, p));
+            linhas.forEach(tr => { tr.style.display = (parseInt(tr.dataset.pagina, 10) === p) ? '' : 'none'; });
+            const ini = p * porPagina + 1, fim = Math.min(total, (p + 1) * porPagina);
+            info.textContent = 'Mostrando ' + ini + '–' + fim + ' de ' + total + ' aluno(s)';
+            linksAtencao.innerHTML = '';
+            const item = (rotulo, alvo, opts) => {
+                const li = document.createElement('li');
+                li.className = 'page-item' + (opts.ativo ? ' active' : '') + (opts.desabilitado ? ' disabled' : '');
+                const a = document.createElement('a');
+                a.className = 'page-link'; a.href = '#'; a.textContent = rotulo;
+                if (opts.ariaLabel) a.setAttribute('aria-label', opts.ariaLabel);
+                a.addEventListener('click', ev => { ev.preventDefault(); if (!opts.desabilitado) mostrarPagina(alvo); });
+                li.appendChild(a); linksAtencao.appendChild(li);
+            };
+            item('‹', p - 1, { desabilitado: p === 0, ariaLabel: 'Anterior' });
+            // janela de até 5 números em torno da página atual
+            let de = Math.max(0, p - 2), ate = Math.min(paginas - 1, de + 4); de = Math.max(0, ate - 4);
+            for (let i = de; i <= ate; i++) item(String(i + 1), i, { ativo: i === p });
+            item('›', p + 1, { desabilitado: p === paginas - 1, ariaLabel: 'Próxima' });
+        }
+        mostrarPagina(0);
     }
 
     // Gráfico 6: Aulas e faltas por dia da semana

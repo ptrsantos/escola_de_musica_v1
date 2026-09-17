@@ -14,6 +14,7 @@ from app.indicadores import (indicadores_pedagogicos, marcar_presenca, ocupacao_
                              resumo_presenca)
 
 MENSALIDADES_POR_PAGINA = 50
+ATENCAO_POR_PAGINA = 10        # dashboard: "alunos que pedem atenção", 10 por página
 
 
 def papeis_required(*papeis):
@@ -226,6 +227,7 @@ def register_routes(app):
             riscos=riscos,
             dados_recebido=dados_recebido,
             alunos_atencao=atencao,
+            atencao_por_pagina=ATENCAO_POR_PAGINA,
             faltosos=pedagogico['faltosos'],
             presenca_instrumento=pedagogico['por_instrumento'],
             aulas_dia_semana=pedagogico['por_dia_semana'],
