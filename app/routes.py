@@ -10,7 +10,8 @@ from app import db
 from app.models import (Usuario, Instrumento, Aluno, Mensalidade, Pagamento, Aula,
                         format_date_for_form, ultimos_meses)
 from app.risco import pontuar
-from app.indicadores import indicadores_pedagogicos, marcar_presenca, resumo_presenca
+from app.indicadores import (indicadores_pedagogicos, marcar_presenca, ocupacao_horarios,
+                             resumo_presenca)
 
 MENSALIDADES_POR_PAGINA = 50
 
@@ -31,6 +32,19 @@ def papeis_required(*papeis):
 
 def parse_date(value):
     return datetime.strptime(value, '%Y-%m-%d').date() if value else None
+
+
+def parse_hora(value):
+    return datetime.strptime(value, '%H:%M').time() if value else None
+
+
+def parse_dia_semana(value):
+    """'0'..'6' (segunda..domingo) -> int; vazio ou inválido -> None."""
+    try:
+        dia = int(value)
+    except (TypeError, ValueError):
+        return None
+    return dia if 0 <= dia <= 6 else None
 
 
 def atualizar_status_vencidos():
@@ -197,6 +211,8 @@ def register_routes(app):
 
         # Presença: faltosos, por instrumento e por dia da semana (1 consulta)
         pedagogico = indicadores_pedagogicos(n_faltosos=10)
+        # Ocupação: alunos ativos por dia x hora da aula (1 consulta)
+        ocupacao = ocupacao_horarios(app.config['OCUPACAO_CONFIG']['vagas_por_horario'])
 
         return render_template(
             'dashboard.html',
@@ -213,6 +229,7 @@ def register_routes(app):
             faltosos=pedagogico['faltosos'],
             presenca_instrumento=pedagogico['por_instrumento'],
             aulas_dia_semana=pedagogico['por_dia_semana'],
+            ocupacao=ocupacao,
         )
 
     @app.route('/api/dashboard-data')
@@ -267,6 +284,8 @@ def register_routes(app):
                 email=(request.form.get('email') or '').strip().lower() or None,
                 endereco=request.form.get('endereco'),
                 status='ativo',
+                dia_aula_semana=parse_dia_semana(request.form.get('dia_aula_semana')),
+                hora_aula=parse_hora(request.form.get('hora_aula')),
             )
             db.session.add(aluno)
             db.session.commit()
@@ -305,6 +324,8 @@ def register_routes(app):
             aluno.email = (request.form.get('email') or '').strip().lower() or None
             aluno.endereco = request.form.get('endereco')
             aluno.status = request.form.get('status', 'ativo')
+            aluno.dia_aula_semana = parse_dia_semana(request.form.get('dia_aula_semana'))
+            aluno.hora_aula = parse_hora(request.form.get('hora_aula'))
             db.session.commit()
             flash('Cadastro atualizado com sucesso!', 'success')
         except (KeyError, ValueError):

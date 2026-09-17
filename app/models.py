@@ -8,6 +8,8 @@ from sqlalchemy.orm import column_property
 
 from app import db
 
+DIAS_SEMANA = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo']  # date.weekday()
+
 
 # ---------------------------------------------------------------------------
 # Usuário (ator do sistema). Adaptado do fluxo de caixa com o campo "papel"
@@ -69,6 +71,11 @@ class Aluno(db.Model):
     mensalidade_base = db.Column(db.Float, nullable=False, default=0)
     status = db.Column(db.String(20), nullable=False, default='ativo')
     data_cadastro = db.Column(db.DateTime, default=datetime.utcnow)
+    # Horário fixo da aula semanal (colunas criadas no Neon pelo Paulo; no
+    # repositório desde 17/09). dia_aula_semana segue date.weekday():
+    # 0 = segunda … 6 = domingo. Base do indicador de ocupação de horários.
+    dia_aula_semana = db.Column(db.Integer, nullable=True)
+    hora_aula = db.Column(db.Time, nullable=True)
 
     mensalidades = db.relationship('Mensalidade', backref='aluno', lazy=True,
                                    cascade='all, delete-orphan')
@@ -87,6 +94,16 @@ class Aluno(db.Model):
         return hoje.year - self.data_nascimento.year - (
             (hoje.month, hoje.day) < (self.data_nascimento.month, self.data_nascimento.day)
         )
+
+    @property
+    def horario_aula(self):
+        """'Terça 14:00', 'Terça', '14:00' ou None — para telas."""
+        partes = []
+        if self.dia_aula_semana is not None and 0 <= self.dia_aula_semana <= 6:
+            partes.append(DIAS_SEMANA[self.dia_aula_semana])
+        if self.hora_aula is not None:
+            partes.append(self.hora_aula.strftime('%H:%M'))
+        return ' '.join(partes) or None
 
     # ----------------- Regras financeiras -----------------
     @property

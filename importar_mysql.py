@@ -8,6 +8,7 @@ Uso:
     python importar_mysql.py --limpar       # remove só o que foi importado antes
     python importar_mysql.py --ano-min 2024 # ignora mensalidades vencidas antes de 2024
     python importar_mysql.py --sem-aulas --sem-professoras
+    python importar_mysql.py --so-horarios  # só preenche dia/hora da aula nos alunos já importados
 
 Origem: variável AC_DATABASE_URL (padrão mysql+pymysql://root:root@127.0.0.1:3306/AC_00000000000000).
 Destino: o banco que a aplicação usa (DATABASE_URL ou o SQLite de instance/).
@@ -24,7 +25,7 @@ import statistics
 import sys
 import unicodedata
 from collections import Counter, defaultdict
-from datetime import date, datetime
+from datetime import date, datetime, time
 from urllib.parse import urlsplit
 
 import pymysql
@@ -47,6 +48,13 @@ VALOR_MAX = 5000.0
 CADASTRO_ANO_MIN, CADASTRO_ANO_MAX = 2000, 2030
 
 INSTRUMENTO_PADRAO = 'Violão'
+
+# Horário fixo da aula semanal (Aluno.dia_aula_semana / hora_aula). O ERP de
+# origem é escola regular: não há "horário do aluno", só o turno da turma e as
+# datas da frequência. Regra de mapeamento (ver MAPEAMENTO_AC_FLASK.md, 3.4):
+# hora pelo turno da última turma; dia = o dia da semana em que o aluno mais
+# teve aula registrada (sem frequência, fica sem dia).
+TURNO_HORA = {'M': time(8, 0), 'T': time(14, 0), 'N': time(19, 0)}
 
 # (idCursos, Serie) -> instrumento. Serie None = todas as séries do curso.
 # Ver MAPEAMENTO_AC_FLASK.md, seção 3.1.
@@ -149,7 +157,7 @@ SQL_ALUNOS = """
 """
 # Última matrícula de cada aluno; com duas turmas no mesmo ano, a de menor idClasse1.
 SQL_ULTIMA_TURMA = """
-    SELECT t.Mat, t.AnoLetivo, t.Situacao, c1.idCursos, c1.Serie
+    SELECT t.Mat, t.AnoLetivo, t.Situacao, c1.idCursos, c1.Serie, c1.Turno
       FROM Turmas t
       JOIN (SELECT Mat, MAX(AnoLetivo) ano FROM Turmas GROUP BY Mat) u
         ON u.Mat = t.Mat AND u.ano = t.AnoLetivo
@@ -289,6 +297,10 @@ def transformar(origem, ano_min, hoje):
             cadastro = origem['primeira_matricula'].get(mat) or como_datetime(r['DtInclusao'])
             descartes['aluno: data_cadastro recuperada de Turmas/DtInclusao'] += 1
 
+        hora_aula = TURNO_HORA.get((turma or {}).get('Turno'))
+        if hora_aula is None:
+            descartes['aluno: sem hora de aula (sem turma ou turno desconhecido)'] += 1
+
         alunos.append({
             'mat': mat,
             'nome': r['Nome'],
@@ -299,6 +311,8 @@ def transformar(origem, ano_min, hoje):
             'mensalidade_base': base,
             'status': status,
             'data_cadastro': cadastro,
+            'hora_aula': hora_aula,
+            'dia_aula_semana': None,          # definido depois, pela frequência
             'mensalidades': mensalidades_por_mat.get(mat, []),
             'aulas': [],
         })
@@ -327,6 +341,15 @@ def transformar(origem, ano_min, hoje):
                           f' · diário {r["codigo_diario"]}',
         })
 
+    # Dia da aula semanal: o dia em que o aluno mais teve aula (empate -> o
+    # primeiro da semana). Sem frequência importada, fica sem dia.
+    for a in alunos:
+        dias = Counter(au['data'].weekday() for au in a['aulas'])
+        if dias:
+            a['dia_aula_semana'] = min(dias, key=lambda d: (-dias[d], d))
+        else:
+            descartes['aluno: sem dia de aula (sem frequência)'] += 1
+
     professoras = [{'nome': d['C_NOME'], 'email': f'docente{d["C_REG"]}{DOMINIO_MARCADOR}'}
                    for d in origem['docentes']]
 
@@ -340,6 +363,8 @@ def resumir(alunos, professoras):
     c['mensalidades'] = sum(len(a['mensalidades']) for a in alunos)
     c['pagamentos'] = sum(1 for a in alunos for m in a['mensalidades'] if m['pagamento'])
     c['aulas'] = sum(len(a['aulas']) for a in alunos)
+    c['alunos com dia e hora de aula'] = sum(1 for a in alunos
+                                             if a['dia_aula_semana'] is not None and a['hora_aula'])
     c['professoras (usuarios)'] = len(professoras)
     por_instrumento = Counter(a['instrumento'] for a in alunos)
     return c, por_instrumento
@@ -376,7 +401,8 @@ def gravar(alunos, professoras):
     for a in alunos:
         aluno = Aluno(nome=a['nome'], email=a['email'], data_nascimento=a['data_nascimento'],
                       endereco=a['endereco'], instrumento_id=instrumentos[a['instrumento']],
-                      mensalidade_base=a['mensalidade_base'], status=a['status'])
+                      mensalidade_base=a['mensalidade_base'], status=a['status'],
+                      dia_aula_semana=a['dia_aula_semana'], hora_aula=a['hora_aula'])
         if a['data_cadastro'] is not None:
             aluno.data_cadastro = a['data_cadastro']
         for m in a['mensalidades']:
@@ -398,6 +424,22 @@ def gravar(alunos, professoras):
     db.session.flush()
 
 
+def atualizar_horarios(alunos):
+    """Só grava dia_aula_semana/hora_aula nos alunos já importados (pelo
+    e-mail marcador), sem apagar nem recriar nada. Devolve quantos mudaram."""
+    existentes = {a.email: a for a in Aluno.query.filter(Aluno.email.like(f'%{DOMINIO_MARCADOR}')).all()}
+    atualizados = 0
+    for a in alunos:
+        aluno = existentes.get(a['email'])
+        if aluno is None:
+            continue
+        if (aluno.dia_aula_semana, aluno.hora_aula) != (a['dia_aula_semana'], a['hora_aula']):
+            aluno.dia_aula_semana = a['dia_aula_semana']
+            aluno.hora_aula = a['hora_aula']
+            atualizados += 1
+    return atualizados
+
+
 # ---------------------------------------------------------------------------
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -407,6 +449,8 @@ def main(argv=None):
                         help='ignora mensalidades vencidas antes deste ano (padrão: %(default)s)')
     parser.add_argument('--sem-aulas', action='store_true', help='não importa a frequência como aulas')
     parser.add_argument('--sem-professoras', action='store_true', help='não cria usuários para as docentes')
+    parser.add_argument('--so-horarios', action='store_true',
+                        help='só preenche dia/hora da aula nos alunos já importados; não apaga nada')
     args = parser.parse_args(argv)
 
     app = create_app()
@@ -444,6 +488,12 @@ def main(argv=None):
 
         if args.dry_run:
             print('\n--dry-run: nada foi gravado.')
+            return 0
+
+        if args.so_horarios:
+            atualizados = atualizar_horarios(alunos)
+            db.session.commit()
+            print(f'\nHorários atualizados em {atualizados} aluno(s) já importado(s); nada apagado.')
             return 0
 
         try:

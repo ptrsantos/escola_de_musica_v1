@@ -30,6 +30,7 @@
                     <dt class="col-5">Instrumento</dt><dd class="col-7">{{ aluno.instrumento.nome }}</dd>
                     <dt class="col-5">Mensalidade</dt><dd class="col-7">R$ {{ "%.2f"|format(aluno.mensalidade_base)|replace(".", ",") }}</dd>
                     <dt class="col-5">Status</dt><dd class="col-7">{{ aluno.status|capitalize }}</dd>
+                    <dt class="col-5">Aula semanal</dt><dd class="col-7">{{ aluno.horario_aula or '—' }}</dd>
                 </dl>
             </div>
         </div>
@@ -134,6 +135,15 @@
                     <div class="row">
                         <div class="col-6 mb-3"><label class="form-label">Data de nascimento</label><input type="date" class="form-control" name="data_nascimento" value="{{ aluno.data_nascimento.isoformat() if aluno.data_nascimento else '' }}"></div>
                         <div class="col-6 mb-3"><label class="form-label">Mensalidade (R$)</label><input type="number" step="0.01" min="0" class="form-control" name="mensalidade_base" value="{{ '%.2f'|format(aluno.mensalidade_base) }}"></div>
+                    </div>
+                    <div class="row">
+                        <div class="col-6 mb-3"><label class="form-label">Dia da aula</label>
+                            <select class="form-select" name="dia_aula_semana">
+                                <option value="">—</option>
+                                {% for d in ['Segunda','Terça','Quarta','Quinta','Sexta','Sábado','Domingo'] %}<option value="{{ loop.index0 }}" {{ 'selected' if aluno.dia_aula_semana == loop.index0 else '' }}>{{ d }}</option>{% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-6 mb-3"><label class="form-label">Hora da aula</label><input type="time" class="form-control" name="hora_aula" value="{{ aluno.hora_aula.strftime('%H:%M') if aluno.hora_aula else '' }}"></div>
                     </div>
                     <div class="mb-3"><label class="form-label">E-mail</label><input type="email" class="form-control" name="email" value="{{ aluno.email or '' }}"></div>
                     <div class="mb-3"><label class="form-label">Endereço</label><input type="text" class="form-control" name="endereco" value="{{ aluno.endereco or '' }}"></div>

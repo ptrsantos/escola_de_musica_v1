@@ -37,6 +37,13 @@ RISK_CONFIG = {
     'limiar_alto': 50,            # score >= => risco alto
 }
 
+# Ocupação de horários: quantos alunos a escola atende por dia/hora (em geral,
+# o número de professoras disponíveis no horário). None = a grade mostra só a
+# contagem de alunos por horário, sem percentual de ocupação.
+OCUPACAO_CONFIG = {
+    'vagas_por_horario': None,
+}
+
 
 def _resolver_database_uri():
     """Define qual banco a aplicação vai usar.
@@ -84,6 +91,7 @@ def create_app(config=None):
         }
 
     app.config['RISK_CONFIG'] = RISK_CONFIG
+    app.config['OCUPACAO_CONFIG'] = OCUPACAO_CONFIG
 
     if config:
         app.config.update(config)
@@ -123,13 +131,36 @@ def create_app(config=None):
 
 
 def init_db(app):
-    """Cria o que falta no banco: tabelas, índices e instrumentos padrão.
-    Seguro em base já populada (não apaga nada)."""
+    """Cria o que falta no banco: tabelas, colunas, índices e instrumentos
+    padrão. Seguro em base já populada (não apaga nada)."""
     with app.app_context():
         db.create_all()
+        garantir_colunas()
         garantir_indices()
         from app.models import inicializar_instrumentos
         inicializar_instrumentos()
+
+
+def garantir_colunas():
+    """db.create_all() não altera tabelas que já existem: uma coluna nova no
+    modelo (ex.: aluno.dia_aula_semana / hora_aula, 17/09) precisa de ADD
+    COLUMN nas bases já criadas. Só colunas anuláveis — as outras exigiriam
+    um valor para as linhas existentes. Idempotente."""
+    from sqlalchemy import inspect, text
+    inspector = inspect(db.engine)
+    criadas = []
+    for tabela in db.metadata.sorted_tables:
+        if not inspector.has_table(tabela.name):
+            continue
+        existentes = {c['name'] for c in inspector.get_columns(tabela.name)}
+        for coluna in tabela.columns:
+            if coluna.name in existentes or not coluna.nullable:
+                continue
+            tipo = coluna.type.compile(dialect=db.engine.dialect)
+            db.session.execute(text(f'ALTER TABLE {tabela.name} ADD COLUMN {coluna.name} {tipo}'))
+            criadas.append(f'{tabela.name}.{coluna.name}')
+    db.session.commit()
+    return criadas
 
 
 def garantir_indices():

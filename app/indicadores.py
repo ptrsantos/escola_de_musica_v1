@@ -1,6 +1,7 @@
 """
 Indicadores pedagógicos, calculados do banco da aplicação: presença por aluno,
-alunos mais faltosos, presença por instrumento e aulas por dia da semana.
+alunos mais faltosos, presença por instrumento, aulas por dia da semana e
+ocupação dos horários (grade dia x hora dos alunos ativos).
 
 A presença vive na observação da aula como o marcador ``Presença: nP/mA``
 (n presenças, m faltas). O importador grava assim a frequência do ERP e o
@@ -16,11 +17,10 @@ from collections import defaultdict
 from sqlalchemy import select
 
 from app import db
-from app.models import Aluno, Aula, Instrumento
+from app.models import DIAS_SEMANA, Aluno, Aula, Instrumento
 from app.risco import RE_PRESENCA
 
 MARCADOR = {'presente': 'Presença: 1P/0A', 'falta': 'Presença: 0P/1A'}
-DIAS_SEMANA = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo']
 
 
 def contar_presenca(observacao):
@@ -114,3 +114,36 @@ def indicadores_pedagogicos(n_faltosos=10, apenas_ativos=True):
                            'faltas': [d['faltas'] for d in dias]},
     }
 
+
+def ocupacao_horarios(vagas_por_horario=None):
+    """Grade dia da semana x hora com o número de alunos ativos em cada
+    horário fixo (``Aluno.dia_aula_semana`` / ``hora_aula``).
+
+    ``vagas_por_horario`` (OCUPACAO_CONFIG): quantos alunos a escola atende
+    por horário; com ele a grade vira percentual de ocupação, sem ele mostra
+    só a contagem (a cor é relativa ao horário mais cheio). Alunos ativos sem
+    dia ou hora entram em ``sem_horario``."""
+    linhas = db.session.execute(
+        select(Aluno.dia_aula_semana, Aluno.hora_aula).where(Aluno.status == 'ativo')).all()
+    grade = defaultdict(int)
+    sem_horario = 0
+    for dia, hora in linhas:
+        if dia is None or hora is None or not 0 <= dia <= 6:
+            sem_horario += 1
+            continue
+        grade[(dia, hora)] += 1
+    horas = sorted({hora for _, hora in grade})
+    celulas = [[grade.get((dia, hora), 0) for dia in range(7)] for hora in horas]
+    maximo = max((n for linha in celulas for n in linha), default=0)
+    escala = vagas_por_horario or maximo or 1
+    return {
+        'dias': DIAS_SEMANA,
+        'horas': [hora.strftime('%H:%M') for hora in horas],
+        'celulas': celulas,
+        # intensidade 0..1 de cada célula, para a cor de fundo na tela
+        'intensidade': [[min(1.0, n / escala) for n in linha] for linha in celulas],
+        'vagas': vagas_por_horario,
+        'maximo': maximo,
+        'com_horario': len(linhas) - sem_horario,
+        'sem_horario': sem_horario,
+    }

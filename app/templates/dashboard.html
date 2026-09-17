@@ -162,6 +162,48 @@
         </div>
     </div>
 
+    <!-- Ocupação de horários: alunos ativos por dia x hora da aula -->
+    <div class="row g-3 mt-1">
+        <div class="col-12">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap">
+                    <h5 class="mb-0"><i class="fas fa-table-cells me-2 text-info"></i>Ocupação de horários</h5>
+                    <span class="small text-muted">
+                        {{ ocupacao.com_horario }} aluno(s) ativo(s) com horário definido
+                        {% if ocupacao.sem_horario %} · {{ ocupacao.sem_horario }} sem dia/hora cadastrado{% endif %}
+                        {% if ocupacao.vagas %} · {{ ocupacao.vagas }} vaga(s) por horário{% else %} · cor relativa ao horário mais cheio ({{ ocupacao.maximo }}){% endif %}
+                    </span>
+                </div>
+                <div class="card-body p-0">
+                    {% if ocupacao.horas %}
+                    <div class="table-responsive">
+                        <table class="table table-bordered text-center mb-0 align-middle" id="tabelaOcupacao">
+                            <thead class="table-light">
+                                <tr><th class="text-start">Hora</th>{% for d in ocupacao.dias %}<th>{{ d }}</th>{% endfor %}</tr>
+                            </thead>
+                            <tbody>
+                                {% for hora in ocupacao.horas %}
+                                {% set i = loop.index0 %}
+                                <tr>
+                                    <th class="text-start">{{ hora }}</th>
+                                    {% for n in ocupacao.celulas[i] %}
+                                    {% set t = ocupacao.intensidade[i][loop.index0] %}
+                                    <td style="background: rgba(54, 162, 235, {{ (0.08 + 0.72 * t)|round(2) if n else 0 }});{% if t > 0.6 %} color:#fff; font-weight:600;{% endif %}">
+                                        {% if n %}{{ n }}{% if ocupacao.vagas %}<span class="small opacity-75"> / {{ ocupacao.vagas }}</span>{% endif %}{% else %}<span class="text-muted">—</span>{% endif %}
+                                    </td>
+                                    {% endfor %}
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-center py-4 text-muted mb-0">Nenhum aluno ativo com dia e hora da aula cadastrados. Preencha o horário fixo na ficha do aluno.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}
 

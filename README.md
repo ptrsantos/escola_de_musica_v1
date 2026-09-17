@@ -138,6 +138,16 @@ o mesmo marcador quando a professora escolhe *Presente* ou *Faltou*. Sobre isso 
 dashboard mostra presença por instrumento, alunos com mais faltas e aulas por dia
 da semana (`app/indicadores.py`, uma consulta), e a ficha do aluno mostra a taxa.
 
+## Ocupação de horários
+
+Cada aluno pode ter um horário fixo semanal (`dia_aula_semana`, 0 = segunda …
+6 = domingo, e `hora_aula`), cadastrado na ficha. O dashboard mostra a grade
+dia × hora com o número de alunos ativos em cada horário; `OCUPACAO_CONFIG`
+(`app/__init__.py`) define quantos alunos a escola atende por horário para a
+grade virar percentual de vagas. Em bases criadas antes dessas colunas, rode
+`python inicializar_db.py` (cria colunas e índices que faltam, sem apagar nada);
+`python importar_mysql.py --so-horarios` preenche o horário dos alunos importados.
+
 ## Testes
 
 ```powershell
@@ -173,7 +183,7 @@ sisviolin/
 │   ├── __init__.py       # create_app(), resolução do banco, RISK_CONFIG
 │   ├── models.py         # Usuario, Instrumento, Aluno, Mensalidade, Pagamento, Aula
 │   ├── risco.py          # features, pontuação pelo modelo (JSON) e motivos
-│   ├── indicadores.py    # presença por instrumento, faltosos, aulas por dia da semana
+│   ├── indicadores.py    # presença por instrumento, faltosos, aulas por dia da semana, ocupação
 │   ├── modelo_evasao.json# regressão logística exportada por ml/treinar.py
 │   ├── routes.py         # rotas, autenticação e controle por perfil
 │   ├── forms.py          # formulários (Flask-WTF)

@@ -116,3 +116,79 @@ def test_dashboard_e_ficha_mostram_presenca(app, dados):
     ficha_ana = texto(client.get(f'/aluno/{dados["ana"]}'))   # aula do seed: observação livre
     assert 'nenhuma aula com registro de presença' in ficha_ana
 
+
+# ---------------------------------------------------------------------------
+# Ocupação de horários (Aluno.dia_aula_semana / hora_aula)
+# ---------------------------------------------------------------------------
+def test_ocupacao_horarios(app):
+    from datetime import time
+    from app.indicadores import ocupacao_horarios
+    with app.app_context():
+        for nome, dia, hora, status in [('A', 1, time(14, 0), 'ativo'), ('B', 1, time(14, 0), 'ativo'),
+                                        ('C', 4, time(9, 0), 'ativo'), ('D', 1, time(14, 0), 'inativo'),
+                                        ('E', None, time(14, 0), 'ativo'), ('F', 2, None, 'ativo')]:
+            a = novo_aluno(nome, status=status)
+            a.dia_aula_semana, a.hora_aula = dia, hora
+        db.session.commit()
+
+        o = ocupacao_horarios()
+        assert o['horas'] == ['09:00', '14:00'] and o['dias'][1] == 'Terça'
+        assert o['celulas'] == [[0, 0, 0, 0, 1, 0, 0], [0, 2, 0, 0, 0, 0, 0]]   # D inativa não conta
+        assert o['maximo'] == 2 and o['vagas'] is None
+        assert o['intensidade'][1][1] == 1.0 and o['intensidade'][0][4] == 0.5
+        assert o['com_horario'] == 3 and o['sem_horario'] == 2               # E sem dia, F sem hora
+
+        o = ocupacao_horarios(vagas_por_horario=4)
+        assert o['vagas'] == 4 and o['intensidade'][1][1] == 0.5
+
+        # sem nenhum aluno com horário: grade vazia, sem erro (5 ativos, todos sem dia)
+        from app.models import Aluno
+        for a in Aluno.query.all():
+            a.dia_aula_semana = None
+        db.session.commit()
+        o = ocupacao_horarios()
+        assert o['horas'] == [] and o['celulas'] == [] and o['maximo'] == 0 and o['sem_horario'] == 5
+
+
+def test_horario_no_cadastro_e_na_ficha(app, dados):
+    from datetime import time
+    from app.models import Aluno
+    client = app.test_client()
+    logar_gestora(client)
+    r = client.post('/adicionar_aluno', data={'nome': 'Gabi', 'instrumento_id': 1, 'mensalidade_base': '200',
+                                              'dia_aula_semana': '3', 'hora_aula': '15:30'})
+    assert r.status_code == 302
+    with app.app_context():
+        gabi = Aluno.query.filter_by(nome='Gabi').one()
+        assert (gabi.dia_aula_semana, gabi.hora_aula) == (3, time(15, 30))
+        assert gabi.horario_aula == 'Quinta 15:30'
+        gabi_id = gabi.id
+    assert 'Quinta 15:30' in texto(client.get(f'/aluno/{gabi_id}'))
+    html = texto(client.get('/dashboard'))
+    assert 'Ocupação de horários' in html and '15:30' in html
+
+    # editar: limpa o dia, mantém a hora; valor inválido vira vazio
+    r = client.post(f'/editar_aluno/{gabi_id}', data={'nome': 'Gabi', 'instrumento_id': 1, 'mensalidade_base': '200',
+                                                      'dia_aula_semana': '9', 'hora_aula': '15:30', 'status': 'ativo'})
+    assert r.status_code == 302
+    with app.app_context():
+        gabi = db.session.get(Aluno, gabi_id)
+        assert gabi.dia_aula_semana is None and gabi.hora_aula == time(15, 30)
+        assert gabi.horario_aula == '15:30'
+        bruno = db.session.get(Aluno, dados['bruno'])
+        assert bruno.horario_aula is None
+
+
+def test_garantir_colunas_adiciona_as_que_faltam(app):
+    """Base criada antes das colunas de horário: init_db/inicializar_db.py acrescenta."""
+    from sqlalchemy import inspect, text
+    from app import garantir_colunas
+    with app.app_context():
+        db.session.execute(text('ALTER TABLE aluno DROP COLUMN hora_aula'))
+        db.session.execute(text('ALTER TABLE aluno DROP COLUMN dia_aula_semana'))
+        db.session.commit()
+        assert 'hora_aula' not in {c['name'] for c in inspect(db.engine).get_columns('aluno')}
+        assert garantir_colunas() == ['aluno.dia_aula_semana', 'aluno.hora_aula']
+        assert garantir_colunas() == []                                   # idempotente
+        colunas = {c['name'] for c in inspect(db.engine).get_columns('aluno')}
+        assert {'dia_aula_semana', 'hora_aula'} <= colunas

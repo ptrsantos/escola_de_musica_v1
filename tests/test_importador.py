@@ -21,8 +21,9 @@ def mensalidade(mat, descricao='Mensalidade Março/2026', venc=datetime(2026, 3,
             'DtPagto': pagto, 'Juros': juros, 'Desconto': desconto}
 
 
-def turma(mat, ano='2026', situacao='F', curso='11', serie='3'):
-    return {'Mat': mat, 'AnoLetivo': ano, 'Situacao': situacao, 'idCursos': curso, 'Serie': serie}
+def turma(mat, ano='2026', situacao='F', curso='11', serie='3', turno='M'):
+    return {'Mat': mat, 'AnoLetivo': ano, 'Situacao': situacao, 'idCursos': curso, 'Serie': serie,
+            'Turno': turno}
 
 
 def frequencia(mat, data=datetime(2026, 5, 4), marcas=('P', 'A'), disciplina='Português',
@@ -78,7 +79,8 @@ def test_de_para_instrumento():
 def test_mensalidade_paga_entra_pelo_valor_liquido_com_juros_no_pagamento():
     o = origem(alunos=[aluno('1')], turmas=[turma('1')], planos={'1': 300},
                mensalidades=[mensalidade('1', valor=300, desconto=50, juros=2.5,
-                                         pagto=datetime(2026, 3, 12))])
+                                         pagto=datetime(2026, 3, 12))],
+               aulas=[frequencia('1')])
     alunos, _, descartes = transformar(o)
     m = alunos[0]['mensalidades'][0]
     assert m['competencia'] == '2026-03'
@@ -101,7 +103,8 @@ def test_bolsa_integral_fica_sem_pagamento():
 def test_data_de_pagamento_zerada_e_sem_pagamento():
     o = origem(alunos=[aluno('1')], turmas=[turma('1')], planos={'1': 300},
                mensalidades=[mensalidade('1', pagto='0000-00-00 00:00:00'),
-                             mensalidade('1', pagto=None, id_=2)])
+                             mensalidade('1', pagto=None, id_=2)],
+               aulas=[frequencia('1')])
     alunos, _, descartes = transformar(o)
     assert [m['pagamento'] for m in alunos[0]['mensalidades']] == [None, None]
     assert not descartes
@@ -212,5 +215,28 @@ def test_resumir():
     alunos, professoras, _ = transformar(o)
     contagens, por_instrumento = imp.resumir(alunos, professoras)
     assert dict(contagens) == {'alunos': 2, 'alunos ativos': 1, 'mensalidades': 2, 'pagamentos': 1,
-                               'aulas': 1, 'professoras (usuarios)': 1}
+                               'aulas': 1, 'alunos com dia e hora de aula': 1,
+                               'professoras (usuarios)': 1}
     assert por_instrumento == {'Piano': 2}
+
+
+def test_horario_da_aula_vem_do_turno_e_do_dia_mais_frequente():
+    from datetime import time
+    o = origem(
+        alunos=[aluno('1'), aluno('2'), aluno('3'), aluno('4')],
+        turmas=[turma('1', turno='T'), turma('2', turno='N'), turma('3', turno='X')],   # 4: sem turma
+        planos={'1': 100, '2': 100, '3': 100, '4': 100},
+        aulas=[frequencia('1', data=datetime(2026, 5, 4)),      # segunda
+               frequencia('1', data=datetime(2026, 5, 6)),      # quarta
+               frequencia('1', data=datetime(2026, 5, 13)),     # quarta -> dia 2
+               frequencia('2', data=datetime(2026, 5, 5)),      # terça
+               frequencia('2', data=datetime(2026, 5, 7))],     # quinta: empate -> terça (1)
+    )
+    alunos, _, descartes = transformar(o)
+    por_mat = {a['mat']: a for a in alunos}
+    assert (por_mat['1']['dia_aula_semana'], por_mat['1']['hora_aula']) == (2, time(14, 0))
+    assert (por_mat['2']['dia_aula_semana'], por_mat['2']['hora_aula']) == (1, time(19, 0))
+    assert (por_mat['3']['dia_aula_semana'], por_mat['3']['hora_aula']) == (None, None)  # turno X
+    assert (por_mat['4']['dia_aula_semana'], por_mat['4']['hora_aula']) == (None, None)  # sem turma
+    assert descartes['aluno: sem hora de aula (sem turma ou turno desconhecido)'] == 2
+    assert descartes['aluno: sem dia de aula (sem frequência)'] == 2
