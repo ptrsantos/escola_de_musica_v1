@@ -130,6 +130,14 @@ validação é cruzada agrupada por aluno e temporal (treina até 2024, testa 20
 As métricas, o peso de cada feature e as limitações da base ficam em
 `instance/ml/metricas.md` a cada treino.
 
+## Frequência
+
+A presença fica registrada na observação da aula como `Presença: nP/mA` — o
+importador grava assim a frequência do ERP e o formulário de acompanhamento grava
+o mesmo marcador quando a professora escolhe *Presente* ou *Faltou*. Sobre isso o
+dashboard mostra presença por instrumento, alunos com mais faltas e aulas por dia
+da semana (`app/indicadores.py`, uma consulta), e a ficha do aluno mostra a taxa.
+
 ## Testes
 
 ```powershell
@@ -165,6 +173,7 @@ sisviolin/
 │   ├── __init__.py       # create_app(), resolução do banco, RISK_CONFIG
 │   ├── models.py         # Usuario, Instrumento, Aluno, Mensalidade, Pagamento, Aula
 │   ├── risco.py          # features, pontuação pelo modelo (JSON) e motivos
+│   ├── indicadores.py    # presença por instrumento, faltosos, aulas por dia da semana
 │   ├── modelo_evasao.json# regressão logística exportada por ml/treinar.py
 │   ├── routes.py         # rotas, autenticação e controle por perfil
 │   ├── forms.py          # formulários (Flask-WTF)

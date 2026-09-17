@@ -50,7 +50,14 @@
                             </select>
                         </div>
                         <div class="col-md-6"><label class="form-label">Professora</label><input class="form-control" name="professora" value="{{ current_user.nome }}"></div>
-                        <div class="col-md-6"><label class="form-label">Data</label><input type="date" class="form-control" name="data" value="{{ hoje }}" required></div>
+                        <div class="col-md-3"><label class="form-label">Data</label><input type="date" class="form-control" name="data" value="{{ hoje }}" required></div>
+                        <div class="col-md-3"><label class="form-label">Presença</label>
+                            <select class="form-select" name="presenca">
+                                <option value="presente">Presente</option>
+                                <option value="falta">Faltou</option>
+                                <option value="">Não registrar</option>
+                            </select>
+                        </div>
                         <div class="col-12"><label class="form-label">Observações da aula</label><textarea class="form-control" name="observacao" rows="3" placeholder="Conteúdo trabalhado, desempenho e pontos de atenção"></textarea></div>
                         <div class="col-12"><label class="form-label">O que estudar</label><textarea class="form-control" name="orientacao_estudo" rows="3" placeholder="Exercícios, repertório ou técnica para a próxima aula"></textarea></div>
                     </div>

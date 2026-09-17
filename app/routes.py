@@ -10,6 +10,7 @@ from app import db
 from app.models import (Usuario, Instrumento, Aluno, Mensalidade, Pagamento, Aula,
                         format_date_for_form, ultimos_meses)
 from app.risco import pontuar
+from app.indicadores import indicadores_pedagogicos, marcar_presenca, resumo_presenca
 
 MENSALIDADES_POR_PAGINA = 50
 
@@ -194,6 +195,9 @@ def register_routes(app):
             key=lambda a: a.risco_score, reverse=True,
         )
 
+        # Presença: faltosos, por instrumento e por dia da semana (1 consulta)
+        pedagogico = indicadores_pedagogicos(n_faltosos=10)
+
         return render_template(
             'dashboard.html',
             total_alunos=total_alunos,
@@ -206,6 +210,9 @@ def register_routes(app):
             riscos=riscos,
             dados_recebido=dados_recebido,
             alunos_atencao=atencao,
+            faltosos=pedagogico['faltosos'],
+            presenca_instrumento=pedagogico['por_instrumento'],
+            aulas_dia_semana=pedagogico['por_dia_semana'],
         )
 
     @app.route('/api/dashboard-data')
@@ -283,7 +290,8 @@ def register_routes(app):
             if not vinculo or vinculo.id != aluno.id:
                 abort(403)
         instrumentos = Instrumento.query.order_by(Instrumento.nome).all()
-        return render_template('aluno_detalhe.html', aluno=aluno, instrumentos=instrumentos)
+        return render_template('aluno_detalhe.html', aluno=aluno, instrumentos=instrumentos,
+                               presenca=resumo_presenca(aluno.aulas))
 
     @app.route('/editar_aluno/<int:id>', methods=['POST'])
     @papeis_required('gestora')
@@ -395,7 +403,10 @@ def register_routes(app):
                 aluno_id=int(request.form['aluno_id']),
                 professora=request.form.get('professora') or current_user.nome,
                 data=parse_date(request.form.get('data')) or date.today(),
-                observacao=request.form.get('observacao'),
+                # Presente/Faltou vira o marcador "Presença: nP/mA" na observação —
+                # o mesmo que o importador grava; é o que alimenta os indicadores.
+                observacao=marcar_presenca(request.form.get('observacao'),
+                                           request.form.get('presenca')),
                 orientacao_estudo=request.form.get('orientacao_estudo'),
             )
             db.session.add(aula)

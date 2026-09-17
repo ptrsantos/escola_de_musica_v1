@@ -123,6 +123,45 @@
         </div>
     </div>
 
+    <!-- Frequência: presença por instrumento, alunos mais faltosos, aulas por dia da semana -->
+    <div class="row g-3 mt-1">
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-white py-3"><h5 class="mb-0"><i class="fas fa-clipboard-check me-2 text-success"></i>Presença por instrumento</h5></div>
+                <div class="card-body"><canvas id="presencaChart" height="250"></canvas></div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-white py-3"><h5 class="mb-0"><i class="fas fa-user-slash me-2 text-danger"></i>Alunos com mais faltas</h5></div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover mb-0" id="tabelaFaltosos">
+                            <thead class="table-light"><tr><th>Aluno</th><th class="text-end">Faltas</th><th class="text-end">Presença</th></tr></thead>
+                            <tbody>
+                                {% for f in faltosos %}
+                                <tr>
+                                    <td><a href="{{ url_for('aluno_detalhe', id=f.id) }}" onclick="mostrarSpinner()">{{ f.nome }}</a> <span class="text-muted small">{{ f.instrumento }}</span></td>
+                                    <td class="text-end">{{ f.faltas }} <span class="text-muted small">/ {{ f.presencas + f.faltas }}</span></td>
+                                    <td class="text-end"><span class="badge text-bg-{{ 'danger' if f.taxa < 0.6 else 'warning' if f.taxa < 0.8 else 'success' }}">{{ (100 * f.taxa)|round|int }}%</span></td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="3" class="text-center py-4 text-muted">Nenhuma aula com presença registrada.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-white py-3"><h5 class="mb-0"><i class="fas fa-calendar-week me-2 text-primary"></i>Aulas por dia da semana</h5></div>
+                <div class="card-body"><canvas id="diaSemanaChart" height="250"></canvas></div>
+            </div>
+        </div>
+    </div>
+
 </div>
 {% endblock %}
 
@@ -179,6 +218,38 @@ document.addEventListener('DOMContentLoaded', function() {
         options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
     });
 
+    // Gráfico 5: Presença por instrumento (barras horizontais, % de presença)
+    const presencaInstrumento = {{ presenca_instrumento|tojson }};
+    if (presencaInstrumento.length === 0) {
+        const c = document.getElementById('presencaChart'); const ctx = c.getContext('2d');
+        ctx.font = '16px Arial'; ctx.textAlign = 'center'; ctx.fillStyle = '#6c757d';
+        ctx.fillText('Sem presença registrada', c.width/2, c.height/2);
+    } else {
+        new Chart(document.getElementById('presencaChart').getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: presencaInstrumento.map(r => r.instrumento),
+                datasets: [{ label: 'Presença (%)', data: presencaInstrumento.map(r => Math.round(100 * r.taxa)),
+                    backgroundColor: presencaInstrumento.map(r => r.taxa >= 0.8 ? '#52b788' : r.taxa >= 0.6 ? '#f0b84b' : '#e76f51') }]
+            },
+            options: { indexAxis: 'y', responsive: true, plugins: { legend: { display: false },
+                tooltip: { callbacks: { label: function(ctx) { const r = presencaInstrumento[ctx.dataIndex];
+                    return ctx.parsed.x + '% · ' + r.alunos + ' aluno(s), ' + r.aulas + ' aula(s), ' + r.faltas + ' falta(s)'; } } } },
+                scales: { x: { min: 0, max: 100, ticks: { callback: v => v + '%' } } } }
+        });
+    }
+
+    // Gráfico 6: Aulas e faltas por dia da semana
+    const diaSemana = {{ aulas_dia_semana|tojson }};
+    new Chart(document.getElementById('diaSemanaChart').getContext('2d'), {
+        type: 'bar',
+        data: { labels: diaSemana.dias.map(d => d.slice(0, 3)),
+            datasets: [
+                { label: 'Aulas', data: diaSemana.aulas, backgroundColor: 'rgba(54, 162, 235, 0.6)' },
+                { label: 'Faltas', data: diaSemana.faltas, backgroundColor: 'rgba(255, 99, 132, 0.6)' }
+            ] },
+        options: { responsive: true, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+    });
 });
 </script>
 {% endblock %}
