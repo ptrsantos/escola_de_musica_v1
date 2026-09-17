@@ -1,0 +1,6 @@
+# Dependências só para treinar o modelo de evasão (ml/treinar.py).
+# Não entram em produção: o app pontua com app/modelo_evasao.json em Python puro.
+-r requirements.txt
+pandas>=2.2
+scikit-learn>=1.5
+joblib>=1.4

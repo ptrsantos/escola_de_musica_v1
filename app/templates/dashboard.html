@@ -122,6 +122,7 @@
             </div>
         </div>
     </div>
+
 </div>
 {% endblock %}
 
@@ -177,6 +178,7 @@ document.addEventListener('DOMContentLoaded', function() {
         data: { labels: ['Baixo','Médio','Alto'], datasets: [{ label: 'Alunos', data: [riscos['baixo'], riscos['médio'], riscos['alto']], backgroundColor: ['#52b788','#f0b84b','#e76f51'] }] },
         options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
     });
+
 });
 </script>
 {% endblock %}

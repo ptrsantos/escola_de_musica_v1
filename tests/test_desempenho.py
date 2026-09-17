@@ -24,8 +24,9 @@ LIMITE_SEGUNDOS = 1.0
 LIMITE_CONSULTAS = 40
 
 
-@pytest.fixture
-def base_grande(app):
+def popular_base_grande(app):
+    """300 alunos x 33 meses (~9.900 mensalidades), 4 aulas por aluno, tudo por
+    INSERT em lote. Também usada por test_risco.py, com o modelo ligado."""
     rnd = random.Random(42)
     with app.app_context():
         novo_usuario('Gestora', 'gestora@escola.com', Usuario.PAPEL_GESTORA)
@@ -62,6 +63,11 @@ def base_grande(app):
         db.session.commit()
         assert Mensalidade.query.count() >= 9000
     return app
+
+
+@pytest.fixture
+def base_grande(app):
+    return popular_base_grande(app)
 
 
 def contar_consultas(app):

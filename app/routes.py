@@ -9,6 +9,7 @@ from sqlalchemy.orm import joinedload, contains_eager, selectinload
 from app import db
 from app.models import (Usuario, Instrumento, Aluno, Mensalidade, Pagamento, Aula,
                         format_date_for_form, ultimos_meses)
+from app.risco import pontuar
 
 MENSALIDADES_POR_PAGINA = 50
 
@@ -149,6 +150,7 @@ def register_routes(app):
         # aritmética em memória, sem tocar no banco de novo.
         alunos = (Aluno.query.filter_by(status='ativo')
                   .options(joinedload(Aluno.instrumento)).all())
+        pontuar(alunos)   # modelo de evasão em lote (3 consultas para todos)
 
         total_alunos = len(alunos)
         inadimplentes = sum(1 for a in alunos if a.inadimplente)
@@ -211,6 +213,7 @@ def register_routes(app):
     def dashboard_data():
         atualizar_status_vencidos()
         alunos = Aluno.query.filter_by(status='ativo').all()
+        pontuar(alunos)
         riscos = {'baixo': 0, 'médio': 0, 'alto': 0}
         for a in alunos:
             riscos[a.risco] += 1
@@ -236,9 +239,11 @@ def register_routes(app):
         consulta = Aluno.query.options(joinedload(Aluno.instrumento)).order_by(Aluno.nome)
         if busca:
             consulta = consulta.filter(Aluno.nome.ilike(f'%{busca}%'))
+        alunos = consulta.all()
+        pontuar(alunos)
         return render_template(
             'alunos.html',
-            alunos=consulta.all(),
+            alunos=alunos,
             instrumentos=Instrumento.query.order_by(Instrumento.nome).all(),
             busca=busca,
         )
@@ -431,6 +436,7 @@ def register_routes(app):
     def relatorios():
         atualizar_status_vencidos()
         alunos = Aluno.query.options(joinedload(Aluno.instrumento)).order_by(Aluno.nome).all()
+        pontuar(alunos)
         total_previsto, total_recebido = totais_financeiros()
         return render_template(
             'relatorios.html',

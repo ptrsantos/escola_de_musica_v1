@@ -102,10 +102,20 @@ class Aluno(db.Model):
         return 'Inadimplente' if self.inadimplente else 'Adimplente'
 
     # ----------------- Análise de risco de evasão -----------------
+    # Com o modelo treinado (app/modelo_evasao.json) o score é 100 x P(evadir)
+    # da regressão logística — ver app/risco.py. Sem modelo, vale a regra
+    # RISK_CONFIG abaixo. As listas (dashboard, relatórios) chamam
+    # risco.pontuar(alunos) antes, para o modelo carregar o histórico de todos
+    # em três consultas; a ficha individual calcula só para si.
     @property
     def risco_score(self):
-        """Score de 0 a 100 combinando inadimplência (peso maior) e ausência
-        de acompanhamento pedagógico recente."""
+        """Score de 0 a 100: modelo de evasão se houver; senão a regra que
+        combina inadimplência (peso maior) e ausência de acompanhamento
+        pedagógico recente."""
+        from app.risco import avaliacao
+        modelo = avaliacao(self)
+        if modelo is not None:
+            return modelo['score']
         cfg = current_app.config['RISK_CONFIG']
         score = (self.qtd_em_atraso or 0) * cfg['peso_por_atraso']
         ultima = self.ultima_aula
@@ -125,6 +135,10 @@ class Aluno(db.Model):
 
     @property
     def risco_motivos(self):
+        from app.risco import avaliacao
+        modelo = avaliacao(self)
+        if modelo is not None:
+            return modelo['motivos']
         cfg = current_app.config['RISK_CONFIG']
         motivos = []
         atrasos = self.qtd_em_atraso or 0

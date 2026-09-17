@@ -26,6 +26,7 @@ CONFIG_TESTE = {
     'SQLALCHEMY_DATABASE_URI': 'sqlite://',   # em memória, uma base por aplicação
     'WTF_CSRF_ENABLED': False,
     'SECRET_KEY': 'chave-de-teste',
+    'MODELO_EVASAO': None,   # sem modelo: o risco é a regra RISK_CONFIG (test_risco.py liga o modelo)
 }
 
 
@@ -113,8 +114,7 @@ def nova_aula(aluno, dias_atras, professora='Flávia'):
     return a
 
 
-@pytest.fixture
-def dados(app):
+def popular_dados(app):
     """Conjunto pequeno e determinístico, no espírito do popular_escola.py.
 
     Ana    ativa, 4 pagas + 1 pendente (vence no futuro), aula há 5 dias  → adimplente, baixo
@@ -124,6 +124,7 @@ def dados(app):
 
     Totais: previsto 3030,00 · recebido 1900,00 · em aberto 1130,00 ·
     3 mensalidades em atraso · 3 ativos, 2 inadimplentes.
+    (Scores acima são da regra; test_risco.py usa o mesmo conjunto com o modelo.)
     """
     with app.app_context():
         novo_usuario('Marina (Proprietária)', 'gestora@escola.com', Usuario.PAPEL_GESTORA)
@@ -153,6 +154,11 @@ def dados(app):
         db.session.commit()
         ids = {'ana': ana.id, 'bruno': bruno.id, 'carla': carla.id, 'diego': diego.id}
     return ids
+
+
+@pytest.fixture
+def dados(app):
+    return popular_dados(app)
 
 
 # ---------------------------------------------------------------------------

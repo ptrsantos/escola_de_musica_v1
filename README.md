@@ -108,19 +108,43 @@ python migrar_para_nuvem.py --env .env.migracao             # carrega (destino p
 python migrar_para_nuvem.py --limpar --env .env.migracao    # apaga as linhas de lá e carrega tudo
 ```
 
+## Risco de evasão (aprendizagem de máquina)
+
+O score de risco de cada aluno vem de uma **regressão logística** treinada sobre
+o histórico da base importada (`app/modelo_evasao.json`). O app pontua em Python
+puro (`app/risco.py`), sem scikit-learn em produção; se o JSON não existir, vale
+a regra de pesos `RISK_CONFIG` (`app/__init__.py`).
+
+Para re-treinar (lê só o banco da aplicação — nada de MySQL):
+
+```powershell
+pip install -r requirements-ml.txt
+python -m ml.treinar                  # avalia, exporta app/modelo_evasao.json, escreve instance/ml/metricas.md
+python -m ml.treinar --sem-exportar   # só avalia
+```
+
+O rótulo é por aluno-ano e sai das próprias mensalidades ("o aluno teve
+mensalidade no ano Y; teve em Y+1?"; no ano corrente, o cadastro inativo), as
+features usam só o histórico até 31/12 de cada ano (sem ver o futuro) e a
+validação é cruzada agrupada por aluno e temporal (treina até 2024, testa 2025).
+As métricas, o peso de cada feature e as limitações da base ficam em
+`instance/ml/metricas.md` a cada treino.
+
 ## Testes
 
 ```powershell
 pip install -r requirements-dev.txt
-pytest                  # tudo (~6 s)
+pytest                  # tudo (~15 s)
 pytest -m "not slow"    # sem os testes de desempenho
 ```
 
 Cada teste sobe a aplicação com um SQLite **em memória** — nada toca em
 `instance/`. A pasta `tests/` cobre segurança (cadastro fechado, CSRF), regras
 financeiras e de risco dos modelos, as rotas por perfil, a transformação do
-importador (sem MySQL) e o desempenho com ~10 mil mensalidades (cada página
-gerencial em menos de 1 s e sem consultas N+1).
+importador (sem MySQL), o modelo de evasão (features com corte temporal,
+pontuação idêntica ao scikit-learn, motivos, fallback para a regra) e o
+desempenho com ~10 mil mensalidades (cada página gerencial em menos de 1 s e
+sem consultas N+1, com o modelo ligado).
 
 ## Estrutura
 
@@ -134,23 +158,29 @@ sisviolin/
 ├── migrar_para_nuvem.py  # envia os dados do SQLite local para o Postgres da nuvem
 ├── requirements.txt
 ├── requirements-dev.txt  # + pytest
+├── requirements-ml.txt   # + pandas, scikit-learn (só para treinar)
 ├── pytest.ini
 ├── vercel.json
 ├── app/
 │   ├── __init__.py       # create_app(), resolução do banco, RISK_CONFIG
 │   ├── models.py         # Usuario, Instrumento, Aluno, Mensalidade, Pagamento, Aula
+│   ├── risco.py          # features, pontuação pelo modelo (JSON) e motivos
+│   ├── modelo_evasao.json# regressão logística exportada por ml/treinar.py
 │   ├── routes.py         # rotas, autenticação e controle por perfil
 │   ├── forms.py          # formulários (Flask-WTF)
 │   └── templates/        # Jinja2 + Bootstrap
+├── ml/
+│   ├── rotulos.py        # rótulo de evasão por aluno-ano, derivado das mensalidades
+│   └── treinar.py        # monta a base, avalia (CV + temporal) e exporta o JSON
 └── tests/                # pytest, SQLite em memória
 ```
 
 ## Situação atual
 
-Protótipo funcional em evolução. O indicador de risco de evasão é hoje uma
-**regra de pesos configurável** (`RISK_CONFIG`, em `app/__init__.py`), não um
-modelo treinado — a substituição por aprendizagem de máquina faz parte do escopo
-do PI IV e está pendente.
+Protótipo funcional em evolução. O indicador de risco de evasão passou a ser um
+modelo treinado (ver acima); a regra de pesos `RISK_CONFIG` ficou como fallback.
+A base de treino é um proxy anonimizado de ERP escolar — o modelo deve ser
+re-treinado com os dados reais da escola quando existirem.
 
 ## Créditos e origem do código
 
