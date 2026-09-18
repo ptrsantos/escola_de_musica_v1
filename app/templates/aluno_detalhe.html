@@ -28,7 +28,8 @@
                     <dt class="col-5">Endereço</dt><dd class="col-7">{{ aluno.endereco or '—' }}</dd>
                     <dt class="col-5">E-mail</dt><dd class="col-7">{{ aluno.email or '—' }}</dd>
                     <dt class="col-5">Instrumento</dt><dd class="col-7">{{ aluno.instrumento.nome }}</dd>
-                    <dt class="col-5">Mensalidade</dt><dd class="col-7">R$ {{ "%.2f"|format(aluno.mensalidade_base)|replace(".", ",") }}</dd>
+                    <dt class="col-5">Aula</dt><dd class="col-7">{{ aluno.horario_aula_descricao or 'Sem horário fixo' }}</dd>
+                    <dt class="col-5">Mensalidade</dt><dd class="col-7">R$ {{ aluno.mensalidade_base|moeda }}</dd>
                     <dt class="col-5">Status</dt><dd class="col-7">{{ aluno.status|capitalize }}</dd>
                     <dt class="col-5">Aula semanal</dt><dd class="col-7">{{ aluno.horario_aula or '—' }}</dd>
                 </dl>
@@ -46,7 +47,7 @@
                     </div>
                     <div class="col">
                         <div class="text-muted small">Valor em aberto</div>
-                        <strong>R$ {{ "%.2f"|format(aluno.valor_em_aberto)|replace(".", ",") }}</strong>
+                        <strong>R$ {{ aluno.valor_em_aberto|moeda }}</strong>
                     </div>
                     <div class="col">
                         <div class="text-muted small">Risco de evasão</div>
@@ -71,8 +72,8 @@
                     <tr>
                         <td>{{ m.competencia }}</td>
                         <td>{{ m.vencimento.strftime('%d/%m/%Y') }}</td>
-                        <td>R$ {{ "%.2f"|format(m.valor)|replace(".", ",") }}</td>
-                        <td>R$ {{ "%.2f"|format(m.valor_pago)|replace(".", ",") }}</td>
+                        <td>R$ {{ m.valor|moeda }}</td>
+                        <td>R$ {{ m.valor_pago|moeda }}</td>
                         <td><span class="badge text-bg-{{ 'success' if m.status=='pago' else ('danger' if m.status=='em atraso' else 'warning') }}">{{ m.status|capitalize }}</span></td>
                     </tr>
                     {% else %}
@@ -101,7 +102,15 @@
             {% for aula in aluno.aulas|sort(attribute='data', reverse=true) %}
             <div class="col-md-6">
                 <div class="border rounded p-3 h-100">
-                    <div class="text-muted small">{{ aula.data.strftime('%d/%m/%Y') }} · {{ aula.professora }}</div>
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="text-muted small">{{ aula.data.strftime('%d/%m/%Y') }} · {{ aula.professora }}</div>
+                        {% if current_user.papel in ['gestora','professora'] %}
+                        <form method="POST" action="{{ url_for('excluir_aula', id=aula.id) }}" onsubmit="return confirm('Excluir este acompanhamento?');">
+                            <input type="hidden" name="next" value="{{ url_for('aluno_detalhe', id=aluno.id) }}">
+                            <button class="btn btn-sm btn-outline-danger py-0" title="Excluir"><i class="fas fa-trash"></i></button>
+                        </form>
+                        {% endif %}
+                    </div>
                     <div class="small text-uppercase fw-bold text-secondary mt-2">Observações</div>
                     <p class="mb-2">{{ aula.observacao or 'Sem observações.' }}</p>
                     <div class="small text-uppercase fw-bold text-secondary">Para estudar</div>
@@ -147,6 +156,17 @@
                     </div>
                     <div class="mb-3"><label class="form-label">E-mail</label><input type="email" class="form-control" name="email" value="{{ aluno.email or '' }}"></div>
                     <div class="mb-3"><label class="form-label">Endereço</label><input type="text" class="form-control" name="endereco" value="{{ aluno.endereco or '' }}"></div>
+                    <div class="row">
+                        <div class="col-6 mb-3"><label class="form-label">Dia da aula</label>
+                            <select class="form-select" name="dia_aula_semana">
+                                <option value="-1" {{ 'selected' if aluno.dia_aula_semana is none else '' }}>Sem horário fixo</option>
+                                {% for i in range(DIAS_SEMANA_PT|length) %}
+                                <option value="{{ i }}" {{ 'selected' if aluno.dia_aula_semana==i else '' }}>{{ DIAS_SEMANA_PT[i] }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-6 mb-3"><label class="form-label">Horário da aula</label><input type="time" class="form-control" name="hora_aula" value="{{ aluno.hora_aula.strftime('%H:%M') if aluno.hora_aula else '' }}"></div>
+                    </div>
                     <div class="mb-3"><label class="form-label">Status</label>
                         <select class="form-select" name="status">
                             <option value="ativo" {{ 'selected' if aluno.status=='ativo' else '' }}>Ativo</option>

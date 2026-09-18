@@ -1,0 +1,114 @@
+{% extends 'base.html' %}
+
+{% block title %}Instrumentos{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Instrumentos</h2>
+    <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#novoInstrumentoModal">
+        <i class="fas fa-plus me-1"></i>Novo instrumento
+    </button>
+</div>
+
+<div class="card shadow-sm border-0">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover mb-0 align-middle">
+                <thead class="table-light"><tr><th>Instrumento</th><th>Alunos vinculados</th><th class="text-end">Ações</th></tr></thead>
+                <tbody>
+                    {% for i in instrumentos %}
+                    <tr>
+                        <td class="fw-semibold">{{ i.nome }}</td>
+                        <td>{{ i.alunos|length }}</td>
+                        <td class="text-end">
+                            <div class="btn-group btn-group-sm">
+                                <button type="button" class="btn btn-outline-secondary" title="Editar"
+                                        data-bs-toggle="modal" data-bs-target="#editarInstrumentoModal"
+                                        data-id="{{ i.id }}" data-nome="{{ i.nome }}"><i class="fas fa-edit"></i></button>
+                                <button type="button" class="btn btn-outline-danger" title="Excluir"
+                                        data-bs-toggle="modal" data-bs-target="#excluirInstrumentoModal"
+                                        data-id="{{ i.id }}" data-nome="{{ i.nome }}" data-alunos="{{ i.alunos|length }}"><i class="fas fa-trash"></i></button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="3" class="text-center py-4 text-muted">Nenhum instrumento cadastrado.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Novo Instrumento -->
+<div class="modal fade" id="novoInstrumentoModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('adicionar_instrumento') }}">
+                <div class="modal-header"><h5 class="modal-title">Novo instrumento</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <div class="mb-3"><label class="form-label">Nome *</label><input type="text" class="form-control" name="nome" required></div>
+                </div>
+                <div class="modal-footer"><button type="submit" class="btn btn-primary">Salvar</button></div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Editar Instrumento -->
+<div class="modal fade" id="editarInstrumentoModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" id="form-editar-instrumento">
+                <div class="modal-header"><h5 class="modal-title">Editar instrumento</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <div class="mb-3"><label class="form-label">Nome *</label><input type="text" class="form-control" name="nome" id="edit-i-nome" required></div>
+                </div>
+                <div class="modal-footer"><button type="submit" class="btn btn-primary">Salvar alterações</button></div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Excluir Instrumento -->
+<div class="modal fade" id="excluirInstrumentoModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title">Confirmar exclusão</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <p>Excluir o instrumento <strong id="excluir-i-nome"></strong>?</p>
+                <p id="excluir-i-aviso" class="text-danger small mb-0 d-none">Há alunos vinculados a este instrumento. Reatribua-os antes de excluir.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <form id="form-excluir-instrumento" method="POST"><button type="submit" class="btn btn-danger">Excluir</button></form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const editModal = document.getElementById('editarInstrumentoModal');
+        if (editModal) {
+            editModal.addEventListener('show.bs.modal', function(event) {
+                const b = event.relatedTarget;
+                document.getElementById('form-editar-instrumento').action = '/editar_instrumento/' + b.getAttribute('data-id');
+                document.getElementById('edit-i-nome').value = b.getAttribute('data-nome');
+            });
+        }
+        const delModal = document.getElementById('excluirInstrumentoModal');
+        if (delModal) {
+            delModal.addEventListener('show.bs.modal', function(event) {
+                const b = event.relatedTarget;
+                document.getElementById('excluir-i-nome').textContent = b.getAttribute('data-nome');
+                document.getElementById('form-excluir-instrumento').action = '/excluir_instrumento/' + b.getAttribute('data-id');
+                const temAlunos = parseInt(b.getAttribute('data-alunos'), 10) > 0;
+                document.getElementById('excluir-i-aviso').classList.toggle('d-none', !temAlunos);
+            });
+        }
+    });
+</script>
+{% endblock %}

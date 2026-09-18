@@ -20,7 +20,16 @@
             <div class="card-body">
                 <div class="d-flex justify-content-between">
                     <div><h5 class="mb-1">{{ aula.aluno.nome }}</h5><div class="text-muted small">{{ aula.data.strftime('%d/%m/%Y') }} · {{ aula.professora }}</div></div>
-                    <i class="fas fa-music text-primary"></i>
+                    <div class="btn-group btn-group-sm align-self-start">
+                        <button type="button" class="btn btn-outline-secondary" title="Editar"
+                                data-bs-toggle="modal" data-bs-target="#editarAulaModal"
+                                data-id="{{ aula.id }}" data-aluno="{{ aula.aluno_id }}"
+                                data-professora="{{ aula.professora }}" data-data="{{ aula.data.isoformat() }}"
+                                data-observacao="{{ aula.observacao or '' }}" data-orientacao="{{ aula.orientacao_estudo or '' }}"><i class="fas fa-edit"></i></button>
+                        <button type="button" class="btn btn-outline-danger" title="Excluir"
+                                data-bs-toggle="modal" data-bs-target="#excluirAulaModal"
+                                data-id="{{ aula.id }}" data-desc="{{ aula.aluno.nome }} · {{ aula.data.strftime('%d/%m/%Y') }}"><i class="fas fa-trash"></i></button>
+                    </div>
                 </div>
                 <hr>
                 <div class="small text-uppercase fw-bold text-secondary">Observações da aula</div>
@@ -67,4 +76,70 @@
         </div>
     </div>
 </div>
+
+<!-- Modal Editar Aula -->
+<div class="modal fade" id="editarAulaModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <form method="POST" id="form-editar-aula">
+                <div class="modal-header"><h5 class="modal-title">Editar acompanhamento</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-6"><label class="form-label">Aluno</label>
+                            <select class="form-select" name="aluno_id" id="edit-a-aluno" required>
+                                {% for aluno in alunos %}<option value="{{ aluno.id }}">{{ aluno.nome }}</option>{% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6"><label class="form-label">Professora</label><input class="form-control" name="professora" id="edit-a-professora"></div>
+                        <div class="col-md-6"><label class="form-label">Data</label><input type="date" class="form-control" name="data" id="edit-a-data" required></div>
+                        <div class="col-12"><label class="form-label">Observações da aula</label><textarea class="form-control" name="observacao" id="edit-a-observacao" rows="3"></textarea></div>
+                        <div class="col-12"><label class="form-label">O que estudar</label><textarea class="form-control" name="orientacao_estudo" id="edit-a-orientacao" rows="3"></textarea></div>
+                    </div>
+                </div>
+                <div class="modal-footer"><button type="submit" class="btn btn-primary">Salvar alterações</button></div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Excluir Aula -->
+<div class="modal fade" id="excluirAulaModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title">Confirmar exclusão</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body"><p>Excluir o acompanhamento <strong id="excluir-a-desc"></strong>?</p><p class="text-danger small mb-0">Esta ação não pode ser desfeita.</p></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <form id="form-excluir-aula" method="POST"><button type="submit" class="btn btn-danger">Excluir</button></form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const editModal = document.getElementById('editarAulaModal');
+        if (editModal) {
+            editModal.addEventListener('show.bs.modal', function(event) {
+                const b = event.relatedTarget;
+                document.getElementById('form-editar-aula').action = '/editar_aula/' + b.getAttribute('data-id');
+                document.getElementById('edit-a-aluno').value = b.getAttribute('data-aluno');
+                document.getElementById('edit-a-professora').value = b.getAttribute('data-professora');
+                document.getElementById('edit-a-data').value = b.getAttribute('data-data');
+                document.getElementById('edit-a-observacao').value = b.getAttribute('data-observacao');
+                document.getElementById('edit-a-orientacao').value = b.getAttribute('data-orientacao');
+            });
+        }
+        const delModal = document.getElementById('excluirAulaModal');
+        if (delModal) {
+            delModal.addEventListener('show.bs.modal', function(event) {
+                const b = event.relatedTarget;
+                document.getElementById('excluir-a-desc').textContent = b.getAttribute('data-desc');
+                document.getElementById('form-excluir-aula').action = '/excluir_aula/' + b.getAttribute('data-id');
+            });
+        }
+    });
+</script>
 {% endblock %}

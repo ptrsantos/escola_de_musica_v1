@@ -33,7 +33,7 @@
                     <tr>
                         <td><strong>{{ aluno.nome }}</strong><br><small class="text-muted">{{ aluno.endereco or 'Endereço não informado' }}</small></td>
                         <td>{{ aluno.instrumento.nome }}</td>
-                        <td>R$ {{ "%.2f"|format(aluno.mensalidade_base)|replace(".", ",") }}</td>
+                        <td>R$ {{ aluno.mensalidade_base|moeda }}</td>
                         <td>{% if aluno.inadimplente %}<span class="inadimplente">Inadimplente</span>{% else %}<span class="adimplente">Adimplente</span>{% endif %}</td>
                         <td><span class="badge-risco risco-{{ 'alto' if aluno.risco=='alto' else 'medio' if aluno.risco=='médio' else 'baixo' }}">{{ aluno.risco|capitalize }}</span></td>
                         <td>
@@ -87,6 +87,17 @@
                     <div class="mb-3"><label class="form-label">E-mail do aluno</label><input type="email" class="form-control" name="email">
                         <div class="form-text">Vincula o login do aluno à ficha (área do aluno).</div></div>
                     <div class="mb-3"><label class="form-label">Endereço</label><input type="text" class="form-control" name="endereco"></div>
+                    <div class="row">
+                        <div class="col-6 mb-3"><label class="form-label">Dia da aula</label>
+                            <select class="form-select" name="dia_aula_semana">
+                                <option value="-1">Sem horário fixo</option>
+                                {% for i in range(DIAS_SEMANA_PT|length) %}
+                                <option value="{{ i }}">{{ DIAS_SEMANA_PT[i] }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-6 mb-3"><label class="form-label">Horário da aula</label><input type="time" class="form-control" name="hora_aula"></div>
+                    </div>
                 </div>
                 <div class="modal-footer"><button type="submit" class="btn btn-primary">Salvar aluno</button></div>
             </form>

@@ -41,16 +41,16 @@
     <div class="card-header bg-white py-3"><h5 class="mb-0"><i class="fas fa-wallet me-2 text-muted"></i>Controle de cobranças e inadimplência</h5></div>
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-striped table-hover mb-0">
-                <thead class="table-light"><tr><th>Aluno</th><th>Competência</th><th>Vencimento</th><th>Valor</th><th>Pago</th><th>Status</th><th>Ação</th></tr></thead>
+            <table class="table table-striped table-hover mb-0 align-middle">
+                <thead class="table-light"><tr><th>Aluno</th><th>Competência</th><th>Vencimento</th><th>Valor</th><th>Pago</th><th>Status</th><th class="text-end">Ações</th></tr></thead>
                 <tbody>
                     {% for m in mensalidades %}
                     <tr>
                         <td class="fw-semibold">{{ m.aluno.nome }}</td>
                         <td>{{ m.competencia }}</td>
                         <td>{{ m.vencimento.strftime('%d/%m/%Y') }}</td>
-                        <td>R$ {{ "%.2f"|format(m.valor)|replace(".", ",") }}</td>
-                        <td>R$ {{ "%.2f"|format(m.valor_pago)|replace(".", ",") }}</td>
+                        <td>R$ {{ m.valor|moeda }}</td>
+                        <td>R$ {{ m.valor_pago|moeda }}</td>
                         <td><span class="badge text-bg-{{ 'success' if m.status=='pago' else ('danger' if m.status=='em atraso' else 'warning') }}">{{ m.status|capitalize }}</span></td>
                         <td>
                             {% if m.status != 'pago' %}
@@ -119,4 +119,113 @@
         </div>
     </div>
 </div>
+
+<!-- Modal Editar Mensalidade -->
+<div class="modal fade" id="editarMensalidadeModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" id="form-editar-mensalidade">
+                <div class="modal-header"><h5 class="modal-title">Editar mensalidade</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <div class="mb-3"><label class="form-label">Aluno</label>
+                        <select class="form-select" name="aluno_id" id="edit-m-aluno" required>
+                            {% for aluno in alunos %}<option value="{{ aluno.id }}">{{ aluno.nome }} — {{ aluno.instrumento.nome }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3"><label class="form-label">Competência</label><input type="month" class="form-control" name="competencia" id="edit-m-competencia" required></div>
+                    <div class="mb-3"><label class="form-label">Valor (R$)</label><input type="number" step="0.01" class="form-control" name="valor" id="edit-m-valor" required></div>
+                    <div class="mb-3"><label class="form-label">Vencimento</label><input type="date" class="form-control" name="vencimento" id="edit-m-vencimento" required></div>
+                </div>
+                <div class="modal-footer"><button type="submit" class="btn btn-primary">Salvar alterações</button></div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Excluir Mensalidade -->
+<div class="modal fade" id="excluirMensalidadeModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title">Confirmar exclusão</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body"><p>Excluir a mensalidade <strong id="excluir-m-desc"></strong>?</p><p class="text-danger small mb-0">Os pagamentos vinculados também serão removidos. Esta ação não pode ser desfeita.</p></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <form id="form-excluir-mensalidade" method="POST"><button type="submit" class="btn btn-danger">Excluir</button></form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modais de Pagamentos (um por mensalidade) -->
+{% for m in mensalidades %}
+<div class="modal fade" id="pagamentosModal{{ m.id }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title">Pagamentos · {{ m.aluno.nome }} ({{ m.competencia }})</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+              <div class="table-responsive">
+                <table class="table table-sm align-middle">
+                    <thead class="table-light"><tr><th>Data</th><th>Valor</th><th>Observação</th><th class="text-end">Ações</th></tr></thead>
+                    <tbody>
+                        {% for p in m.pagamentos %}
+                        <tr>
+                            <td>{{ p.data_pagamento.strftime('%d/%m/%Y') }}</td>
+                            <td>R$ {{ p.valor|moeda }}</td>
+                            <td class="small text-muted">{{ p.observacao or '—' }}</td>
+                            <td class="text-end">
+                                <form method="POST" action="{{ url_for('editar_pagamento', id=p.id) }}" class="d-inline-flex gap-1 align-items-center">
+                                    <input type="date" class="form-control form-control-sm" name="data_pagamento" value="{{ p.data_pagamento.isoformat() }}" style="width:140px">
+                                    <input type="number" step="0.01" class="form-control form-control-sm" name="valor" value="{{ '%.2f'|format(p.valor) }}" style="width:100px">
+                                    <input type="text" class="form-control form-control-sm" name="observacao" value="{{ p.observacao or '' }}" placeholder="obs" style="width:120px">
+                                    <button class="btn btn-sm btn-outline-primary" title="Salvar"><i class="fas fa-save"></i></button>
+                                </form>
+                                <form method="POST" action="{{ url_for('excluir_pagamento', id=p.id) }}" class="d-inline">
+                                    <button class="btn btn-sm btn-outline-danger" title="Excluir"><i class="fas fa-trash"></i></button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4" class="text-center text-muted py-3">Nenhum pagamento registrado.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+              </div>
+                <hr>
+                <form method="POST" action="{{ url_for('registrar_pagamento', id=m.id) }}" class="row g-2 align-items-end">
+                    <div class="col-auto"><label class="form-label small mb-0">Data</label><input type="date" class="form-control form-control-sm" name="data_pagamento" value="{{ hoje }}"></div>
+                    <div class="col-auto"><label class="form-label small mb-0">Valor</label><input type="number" step="0.01" class="form-control form-control-sm" name="valor" value="{{ '%.2f'|format(m.valor - m.valor_pago) }}"></div>
+                    <div class="col"><label class="form-label small mb-0">Observação</label><input type="text" class="form-control form-control-sm" name="observacao"></div>
+                    <div class="col-auto"><button class="btn btn-sm btn-success"><i class="fas fa-plus me-1"></i>Adicionar</button></div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endfor %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const editModal = document.getElementById('editarMensalidadeModal');
+        if (editModal) {
+            editModal.addEventListener('show.bs.modal', function(event) {
+                const b = event.relatedTarget;
+                document.getElementById('form-editar-mensalidade').action = '/editar_mensalidade/' + b.getAttribute('data-id');
+                document.getElementById('edit-m-aluno').value = b.getAttribute('data-aluno');
+                document.getElementById('edit-m-competencia').value = b.getAttribute('data-competencia');
+                document.getElementById('edit-m-valor').value = b.getAttribute('data-valor');
+                document.getElementById('edit-m-vencimento').value = b.getAttribute('data-vencimento');
+            });
+        }
+        const delModal = document.getElementById('excluirMensalidadeModal');
+        if (delModal) {
+            delModal.addEventListener('show.bs.modal', function(event) {
+                const b = event.relatedTarget;
+                document.getElementById('excluir-m-desc').textContent = b.getAttribute('data-desc');
+                document.getElementById('form-excluir-mensalidade').action = '/excluir_mensalidade/' + b.getAttribute('data-id');
+            });
+        }
+    });
+</script>
 {% endblock %}

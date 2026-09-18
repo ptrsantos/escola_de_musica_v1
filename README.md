@@ -41,6 +41,8 @@ Indicadores previstos:
 
 Requer Python 3.10 ou superior. No Windows (PowerShell), a partir da pasta do projeto:
 
+Depois de clonar o repositório, siga os passos na ordem:
+
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1

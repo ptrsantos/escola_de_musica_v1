@@ -8,7 +8,9 @@ from sqlalchemy.orm import joinedload, contains_eager, selectinload
 
 from app import db
 from app.models import (Usuario, Instrumento, Aluno, Mensalidade, Pagamento, Aula,
-                        format_date_for_form, ultimos_meses)
+                        format_date_for_form, ultimos_meses, DIAS_SEMANA_PT,
+                        alunos_com_aula_no_dia, aniversariantes_do_dia,
+                        aniversariantes_do_mes, balanco_entradas)
 from app.risco import pontuar
 from app.indicadores import (indicadores_pedagogicos, marcar_presenca, ocupacao_horarios,
                              resumo_presenca)
@@ -69,8 +71,40 @@ def register_routes(app):
     @app.route('/')
     def home():
         if current_user.is_authenticated:
-            return redirect(url_for('dashboard'))
+            if current_user.is_aluno:
+                return redirect(url_for('minha_area'))
+            return redirect(url_for('inicio'))
         return render_template('index.html')
+
+    # =================================================================
+    # Página inicial operacional (agenda do dia, aniversariantes, entradas)
+    # Voltada a quem dá aula: acesso rápido à ficha do aluno para anotar.
+    # =================================================================
+    @app.route('/inicio')
+    @papeis_required('gestora', 'professora')
+    def inicio():
+        hoje = date.today()
+        dia_semana = hoje.weekday()
+
+        agenda_hoje = alunos_com_aula_no_dia(dia_semana)
+        aniv_hoje = aniversariantes_do_dia(hoje)
+        aniv_mes = aniversariantes_do_mes(hoje.month)
+
+        # Balanço de entradas: pagamentos recebidos hoje e no mês corrente.
+        primeiro_dia_mes = hoje.replace(day=1)
+        entradas_hoje = balanco_entradas(hoje, hoje)
+        entradas_mes = balanco_entradas(primeiro_dia_mes, hoje)
+
+        return render_template(
+            'inicio.html',
+            hoje=hoje,
+            dia_semana_nome=DIAS_SEMANA_PT[dia_semana],
+            agenda_hoje=agenda_hoje,
+            aniversariantes_hoje=aniv_hoje,
+            aniversariantes_mes=aniv_mes,
+            entradas_hoje=entradas_hoje,
+            entradas_mes=entradas_mes,
+        )
 
     @app.route('/registrar', methods=['GET', 'POST'])
     def registrar():
@@ -139,7 +173,11 @@ def register_routes(app):
             if usuario and usuario.verificar_senha(senha):
                 login_user(usuario)
                 next_page = request.args.get('next')
-                return redirect(next_page or url_for('dashboard'))
+                if next_page:
+                    return redirect(next_page)
+                if usuario.is_aluno:
+                    return redirect(url_for('minha_area'))
+                return redirect(url_for('inicio'))
             flash('Email ou senha inválidos.', 'danger')
         return render_template('login.html')
 
@@ -285,9 +323,9 @@ def register_routes(app):
                 data_nascimento=parse_date(request.form.get('data_nascimento')),
                 email=(request.form.get('email') or '').strip().lower() or None,
                 endereco=request.form.get('endereco'),
-                status='ativo',
                 dia_aula_semana=parse_dia_semana(request.form.get('dia_aula_semana')),
                 hora_aula=parse_hora(request.form.get('hora_aula')),
+                status='ativo',
             )
             db.session.add(aluno)
             db.session.commit()
@@ -325,9 +363,9 @@ def register_routes(app):
             aluno.data_nascimento = parse_date(request.form.get('data_nascimento'))
             aluno.email = (request.form.get('email') or '').strip().lower() or None
             aluno.endereco = request.form.get('endereco')
-            aluno.status = request.form.get('status', 'ativo')
             aluno.dia_aula_semana = parse_dia_semana(request.form.get('dia_aula_semana'))
             aluno.hora_aula = parse_hora(request.form.get('hora_aula'))
+            aluno.status = request.form.get('status', 'ativo')
             db.session.commit()
             flash('Cadastro atualizado com sucesso!', 'success')
         except (KeyError, ValueError):
@@ -398,6 +436,32 @@ def register_routes(app):
             flash('Dados da mensalidade inválidos.', 'danger')
         return redirect(url_for('financeiro'))
 
+    @app.route('/editar_mensalidade/<int:id>', methods=['POST'])
+    @papeis_required('gestora')
+    def editar_mensalidade(id):
+        m = db.get_or_404(Mensalidade, id)
+        try:
+            m.aluno_id = int(request.form['aluno_id'])
+            m.competencia = request.form['competencia']
+            m.valor = float(request.form['valor'])
+            m.vencimento = parse_date(request.form['vencimento'])
+            m.atualizar_status()
+            db.session.commit()
+            flash('Mensalidade atualizada com sucesso!', 'success')
+        except (KeyError, ValueError):
+            db.session.rollback()
+            flash('Dados da mensalidade inválidos.', 'danger')
+        return redirect(url_for('financeiro'))
+
+    @app.route('/excluir_mensalidade/<int:id>', methods=['POST'])
+    @papeis_required('gestora')
+    def excluir_mensalidade(id):
+        m = db.get_or_404(Mensalidade, id)
+        db.session.delete(m)  # remove os pagamentos em cascata
+        db.session.commit()
+        flash('Mensalidade removida com sucesso!', 'success')
+        return redirect(url_for('financeiro'))
+
     @app.route('/registrar_pagamento/<int:id>', methods=['POST'])
     @papeis_required('gestora')
     def registrar_pagamento(id):
@@ -413,6 +477,34 @@ def register_routes(app):
         m.atualizar_status()
         db.session.commit()
         flash('Pagamento registrado com sucesso!', 'success')
+        return redirect(url_for('financeiro'))
+
+    @app.route('/editar_pagamento/<int:id>', methods=['POST'])
+    @papeis_required('gestora')
+    def editar_pagamento(id):
+        p = db.get_or_404(Pagamento, id)
+        try:
+            p.valor = float(request.form['valor'])
+            p.data_pagamento = parse_date(request.form.get('data_pagamento')) or p.data_pagamento
+            p.observacao = request.form.get('observacao')
+            p.mensalidade.atualizar_status()
+            db.session.commit()
+            flash('Pagamento atualizado com sucesso!', 'success')
+        except (KeyError, ValueError):
+            db.session.rollback()
+            flash('Dados do pagamento inválidos.', 'danger')
+        return redirect(url_for('financeiro'))
+
+    @app.route('/excluir_pagamento/<int:id>', methods=['POST'])
+    @papeis_required('gestora')
+    def excluir_pagamento(id):
+        p = db.get_or_404(Pagamento, id)
+        mensalidade = p.mensalidade
+        db.session.delete(p)
+        db.session.flush()
+        mensalidade.atualizar_status()
+        db.session.commit()
+        flash('Pagamento removido com sucesso!', 'success')
         return redirect(url_for('financeiro'))
 
     # =================================================================
@@ -445,6 +537,33 @@ def register_routes(app):
             alunos=Aluno.query.filter_by(status='ativo').order_by(Aluno.nome).all(),
             hoje=format_date_for_form(date.today()),
         )
+
+    @app.route('/editar_aula/<int:id>', methods=['POST'])
+    @papeis_required('gestora', 'professora')
+    def editar_aula(id):
+        aula = db.get_or_404(Aula, id)
+        try:
+            aula.aluno_id = int(request.form['aluno_id'])
+            aula.professora = request.form.get('professora') or aula.professora
+            aula.data = parse_date(request.form.get('data')) or aula.data
+            aula.observacao = request.form.get('observacao')
+            aula.orientacao_estudo = request.form.get('orientacao_estudo')
+            db.session.commit()
+            flash('Acompanhamento atualizado com sucesso!', 'success')
+        except (KeyError, ValueError):
+            db.session.rollback()
+            flash('Dados do acompanhamento inválidos.', 'danger')
+        return redirect(request.form.get('next') or url_for('acompanhamento'))
+
+    @app.route('/excluir_aula/<int:id>', methods=['POST'])
+    @papeis_required('gestora', 'professora')
+    def excluir_aula(id):
+        aula = db.get_or_404(Aula, id)
+        destino = request.form.get('next') or url_for('acompanhamento')
+        db.session.delete(aula)
+        db.session.commit()
+        flash('Acompanhamento removido com sucesso!', 'success')
+        return redirect(destino)
 
     # =================================================================
     # Área do aluno (consulta apenas dos próprios dados)
@@ -479,6 +598,123 @@ def register_routes(app):
             total_recebido=total_recebido,
             em_aberto=round(total_previsto - total_recebido, 2),
         )
+
+    # =================================================================
+    # Instrumentos (cadastro) — somente gestora
+    # =================================================================
+    @app.route('/instrumentos')
+    @papeis_required('gestora')
+    def instrumentos():
+        lista = Instrumento.query.order_by(Instrumento.nome).all()
+        return render_template('instrumentos.html', instrumentos=lista)
+
+    @app.route('/adicionar_instrumento', methods=['POST'])
+    @papeis_required('gestora')
+    def adicionar_instrumento():
+        nome = (request.form.get('nome') or '').strip()
+        if not nome:
+            flash('Informe o nome do instrumento.', 'danger')
+        elif Instrumento.query.filter(func.lower(Instrumento.nome) == nome.lower()).first():
+            flash('Já existe um instrumento com esse nome.', 'warning')
+        else:
+            db.session.add(Instrumento(nome=nome))
+            db.session.commit()
+            flash('Instrumento adicionado com sucesso!', 'success')
+        return redirect(url_for('instrumentos'))
+
+    @app.route('/editar_instrumento/<int:id>', methods=['POST'])
+    @papeis_required('gestora')
+    def editar_instrumento(id):
+        instrumento = db.get_or_404(Instrumento, id)
+        nome = (request.form.get('nome') or '').strip()
+        if not nome:
+            flash('Informe o nome do instrumento.', 'danger')
+        elif Instrumento.query.filter(func.lower(Instrumento.nome) == nome.lower(),
+                                      Instrumento.id != id).first():
+            flash('Já existe um instrumento com esse nome.', 'warning')
+        else:
+            instrumento.nome = nome
+            db.session.commit()
+            flash('Instrumento atualizado com sucesso!', 'success')
+        return redirect(url_for('instrumentos'))
+
+    @app.route('/excluir_instrumento/<int:id>', methods=['POST'])
+    @papeis_required('gestora')
+    def excluir_instrumento(id):
+        instrumento = db.get_or_404(Instrumento, id)
+        if instrumento.alunos:
+            flash(f'Não é possível excluir "{instrumento.nome}": há {len(instrumento.alunos)} '
+                  f'aluno(s) vinculado(s).', 'danger')
+        else:
+            db.session.delete(instrumento)
+            db.session.commit()
+            flash('Instrumento removido com sucesso!', 'success')
+        return redirect(url_for('instrumentos'))
+
+    # =================================================================
+    # Usuários (gestão de acesso) — somente gestora
+    # =================================================================
+    @app.route('/usuarios')
+    @papeis_required('gestora')
+    def usuarios():
+        lista = Usuario.query.order_by(Usuario.nome).all()
+        return render_template('usuarios.html', usuarios=lista,
+                               papeis=[Usuario.PAPEL_GESTORA, Usuario.PAPEL_PROFESSORA,
+                                       Usuario.PAPEL_ALUNO])
+
+    @app.route('/adicionar_usuario', methods=['POST'])
+    @papeis_required('gestora')
+    def adicionar_usuario():
+        nome = (request.form.get('nome') or '').strip()
+        email = (request.form.get('email') or '').strip().lower()
+        senha = request.form.get('senha')
+        papel = request.form.get('papel', Usuario.PAPEL_GESTORA)
+        if not (nome and email and senha):
+            flash('Preencha nome, e-mail e senha.', 'danger')
+        elif Usuario.query.filter_by(email=email).first():
+            flash('Já existe um usuário com esse e-mail.', 'warning')
+        else:
+            novo = Usuario(nome=nome, email=email, papel=papel)
+            novo.set_senha(senha)
+            db.session.add(novo)
+            db.session.commit()
+            flash('Usuário criado com sucesso!', 'success')
+        return redirect(url_for('usuarios'))
+
+    @app.route('/editar_usuario/<int:id>', methods=['POST'])
+    @papeis_required('gestora')
+    def editar_usuario(id):
+        usuario = db.get_or_404(Usuario, id)
+        nome = (request.form.get('nome') or '').strip()
+        email = (request.form.get('email') or '').strip().lower()
+        papel = request.form.get('papel', usuario.papel)
+        senha = request.form.get('senha')
+        conflito = Usuario.query.filter(Usuario.email == email, Usuario.id != id).first()
+        if not (nome and email):
+            flash('Nome e e-mail são obrigatórios.', 'danger')
+        elif conflito:
+            flash('Já existe outro usuário com esse e-mail.', 'warning')
+        else:
+            usuario.nome = nome
+            usuario.email = email
+            usuario.papel = papel
+            if senha:
+                usuario.set_senha(senha)
+            db.session.commit()
+            flash('Usuário atualizado com sucesso!', 'success')
+        return redirect(url_for('usuarios'))
+
+    @app.route('/excluir_usuario/<int:id>', methods=['POST'])
+    @papeis_required('gestora')
+    def excluir_usuario(id):
+        usuario = db.get_or_404(Usuario, id)
+        if usuario.id == current_user.id:
+            flash('Você não pode excluir o próprio usuário conectado.', 'danger')
+        else:
+            db.session.delete(usuario)
+            db.session.commit()
+            flash('Usuário removido com sucesso!', 'success')
+        return redirect(url_for('usuarios'))
 
     # =================================================================
     # Handlers de erro
