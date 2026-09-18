@@ -331,6 +331,46 @@ def format_date_for_form(date_obj):
     return date_obj.strftime('%Y-%m-%d') if date_obj else ''
 
 
+# ---------------------------------------------------------------------------
+# Consultas de apoio à página inicial operacional (home).
+# ---------------------------------------------------------------------------
+def alunos_com_aula_no_dia(dia_semana):
+    """Alunos ativos com aula recorrente no dia da semana informado
+    (0=segunda..6=domingo), ordenados por horário."""
+    return (Aluno.query
+            .filter(Aluno.status == 'ativo',
+                    Aluno.dia_aula_semana == dia_semana)
+            .order_by(Aluno.hora_aula.asc().nullslast(), Aluno.nome)
+            .all())
+
+
+def aniversariantes_do_dia(dia=None):
+    """Alunos ativos que fazem aniversário no dia informado (padrão: hoje)."""
+    dia = dia or date.today()
+    return [a for a in Aluno.query.filter_by(status='ativo').all()
+            if a.data_nascimento
+            and (a.data_nascimento.month, a.data_nascimento.day) == (dia.month, dia.day)]
+
+
+def aniversariantes_do_mes(mes=None):
+    """Alunos ativos que fazem aniversário no mês informado (padrão: mês atual),
+    ordenados por dia."""
+    mes = mes or date.today().month
+    lista = [a for a in Aluno.query.filter_by(status='ativo').all()
+             if a.data_nascimento and a.data_nascimento.month == mes]
+    return sorted(lista, key=lambda a: a.data_nascimento.day)
+
+
+def balanco_entradas(inicio, fim):
+    """Soma dos pagamentos (entradas) com data_pagamento no intervalo
+    [inicio, fim] inclusive. Retorna float."""
+    total = (db.session.query(func.coalesce(func.sum(Pagamento.valor), 0.0))
+             .filter(Pagamento.data_pagamento >= inicio,
+                     Pagamento.data_pagamento <= fim)
+             .scalar())
+    return round(float(total or 0.0), 2)
+
+
 def ultimos_meses(n, hoje=None):
     """['YYYY-MM', ...] dos últimos ``n`` meses, do mais antigo ao atual, contando
     meses de calendário. (Defeito nº 6: a versão anterior subtraía 30 dias por

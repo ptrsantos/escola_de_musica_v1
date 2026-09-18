@@ -8,7 +8,9 @@ from sqlalchemy.orm import joinedload, contains_eager, selectinload
 
 from app import db
 from app.models import (Usuario, Instrumento, Aluno, Mensalidade, Pagamento, Aula,
-                        format_date_for_form, ultimos_meses)
+                        format_date_for_form, ultimos_meses, DIAS_SEMANA_PT,
+                        alunos_com_aula_no_dia, aniversariantes_do_dia,
+                        aniversariantes_do_mes, balanco_entradas)
 from app.risco import pontuar
 from app.indicadores import (indicadores_pedagogicos, marcar_presenca, ocupacao_horarios,
                              resumo_presenca)
@@ -322,10 +324,8 @@ def register_routes(app):
                 email=(request.form.get('email') or '').strip().lower() or None,
                 endereco=request.form.get('endereco'),
                 dia_aula_semana=parse_dia_semana(request.form.get('dia_aula_semana')),
-                hora_aula=parse_time(request.form.get('hora_aula')),
-                status='ativo',
-                dia_aula_semana=parse_dia_semana(request.form.get('dia_aula_semana')),
                 hora_aula=parse_hora(request.form.get('hora_aula')),
+                status='ativo',
             )
             db.session.add(aluno)
             db.session.commit()
@@ -364,10 +364,8 @@ def register_routes(app):
             aluno.email = (request.form.get('email') or '').strip().lower() or None
             aluno.endereco = request.form.get('endereco')
             aluno.dia_aula_semana = parse_dia_semana(request.form.get('dia_aula_semana'))
-            aluno.hora_aula = parse_time(request.form.get('hora_aula'))
-            aluno.status = request.form.get('status', 'ativo')
-            aluno.dia_aula_semana = parse_dia_semana(request.form.get('dia_aula_semana'))
             aluno.hora_aula = parse_hora(request.form.get('hora_aula'))
+            aluno.status = request.form.get('status', 'ativo')
             db.session.commit()
             flash('Cadastro atualizado com sucesso!', 'success')
         except (KeyError, ValueError):
