@@ -1,23 +1,70 @@
-# Python
+# ---------------------------------------------------------------
+# SisViolin - Projeto Integrador IV (UNIVESP)
+# Aplicacao Python / Flask
+# ---------------------------------------------------------------
+
+# --- Credenciais e configuracao de ambiente ---
+# NUNCA versionar senha de banco nem SECRET_KEY.
+# Versione apenas o modelo:
+#   .env.example -> vai para o repositorio (sem segredos)
+#   .env         -> fica so na maquina de cada integrante
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credenciais*
+segredos*
+
+# --- Python ---
 __pycache__/
 *.py[cod]
+*$py.class
 *.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# --- Ambientes virtuais ---
 .venv/
 venv/
 env/
+ENV/
 
-# Banco de dados local
-*.db
-*.sqlite3
+# --- Banco de dados local ---
 instance/
+*.db
+*.sqlite
+*.sqlite3
 
-# Variáveis de ambiente locais
-.env
+# --- Dumps e backups de banco ---
+*.sql.gz
+*.dump
+backup_*.sql
 
-# IDE / SO
+# --- Logs e arquivos gerados em execucao ---
+*.log
+/logs/
+/uploads/
+/storage/
+/cache/
+/tmp/
+
+# --- Deploy ---
+.vercel
+
+# --- Front-end (caso venha a existir build step) ---
+/node_modules/
+
+# --- Editores e IDEs ---
 .vscode/
+.claude/
 .idea/
+*.swp
+*~
+*.bak
+
+# --- Sistema operacional ---
 .DS_Store
 Thumbs.db
-
-.vercel
+ehthumbs.db
+desktop.ini

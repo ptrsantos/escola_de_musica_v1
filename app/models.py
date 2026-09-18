@@ -3,9 +3,12 @@ from calendar import monthrange
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask import current_app
 from flask_login import UserMixin
-from sqlalchemy import func
+from sqlalchemy import func, select, update, inspect as sa_inspect
+from sqlalchemy.orm import column_property
 
 from app import db
+
+DIAS_SEMANA = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo']  # date.weekday()
 
 
 # ---------------------------------------------------------------------------
@@ -78,6 +81,11 @@ class Aluno(db.Model):
     mensalidade_base = db.Column(db.Float, nullable=False, default=0)
     status = db.Column(db.String(20), nullable=False, default='ativo')
     data_cadastro = db.Column(db.DateTime, default=datetime.utcnow)
+    # Horário fixo da aula semanal (colunas criadas no Neon pelo Paulo; no
+    # repositório desde 17/09). dia_aula_semana segue date.weekday():
+    # 0 = segunda … 6 = domingo. Base do indicador de ocupação de horários.
+    dia_aula_semana = db.Column(db.Integer, nullable=True)
+    hora_aula = db.Column(db.Time, nullable=True)
 
     # Horário de aula recorrente (semanal). Convenção weekday(): segunda=0..domingo=6.
     # NULL = aluno sem horário fixo definido.
@@ -89,6 +97,10 @@ class Aluno(db.Model):
     aulas = db.relationship('Aula', backref='aluno', lazy=True,
                             cascade='all, delete-orphan')
 
+    # Colunas calculadas no banco (definidas no fim do arquivo, porque
+    # referenciam Mensalidade e Aula): qtd_em_atraso, valor_em_aberto e
+    # ultima_aula. Chegam junto com o SELECT do aluno — sem consulta extra.
+
     # ----------------- utilitários -----------------
     def idade(self):
         if not self.data_nascimento:
@@ -98,47 +110,15 @@ class Aluno(db.Model):
             (hoje.month, hoje.day) < (self.data_nascimento.month, self.data_nascimento.day)
         )
 
-    # ----------------- Horário de aula recorrente -----------------
     @property
-    def nome_dia_aula(self):
-        """Nome do dia da aula por extenso ('Quarta-feira') ou None."""
-        if self.dia_aula_semana is None:
-            return None
-        if 0 <= self.dia_aula_semana <= 6:
-            return DIAS_SEMANA_PT[self.dia_aula_semana]
-        return None
-
-    @property
-    def hora_aula_formatada(self):
-        return self.hora_aula.strftime('%H:%M') if self.hora_aula else None
-
-    @property
-    def horario_aula_descricao(self):
-        """Descrição amigável do horário fixo (ex.: 'Quarta-feira às 15:00')."""
-        dia = self.nome_dia_aula
-        if not dia:
-            return None
-        if self.hora_aula:
-            return f'{dia} às {self.hora_aula.strftime("%H:%M")}'
-        return dia
-
-    @property
-    def tem_aula_hoje(self):
-        return self.dia_aula_semana is not None and self.dia_aula_semana == date.today().weekday()
-
-    # ----------------- Aniversário -----------------
-    @property
-    def faz_aniversario_hoje(self):
-        if not self.data_nascimento:
-            return False
-        hoje = date.today()
-        return (self.data_nascimento.month, self.data_nascimento.day) == (hoje.month, hoje.day)
-
-    @property
-    def faz_aniversario_no_mes(self):
-        if not self.data_nascimento:
-            return False
-        return self.data_nascimento.month == date.today().month
+    def horario_aula(self):
+        """'Terça 14:00', 'Terça', '14:00' ou None — para telas."""
+        partes = []
+        if self.dia_aula_semana is not None and 0 <= self.dia_aula_semana <= 6:
+            partes.append(DIAS_SEMANA[self.dia_aula_semana])
+        if self.hora_aula is not None:
+            partes.append(self.hora_aula.strftime('%H:%M'))
+        return ' '.join(partes) or None
 
     # ----------------- Regras financeiras -----------------
     @property
@@ -147,27 +127,29 @@ class Aluno(db.Model):
 
     @property
     def inadimplente(self):
-        return len(self.mensalidades_em_atraso) > 0
+        return (self.qtd_em_atraso or 0) > 0
 
     @property
     def situacao_financeira(self):
         return 'Inadimplente' if self.inadimplente else 'Adimplente'
 
-    @property
-    def valor_em_aberto(self):
-        return round(sum(m.valor - m.valor_pago for m in self.mensalidades_em_atraso), 2)
-
-    @property
-    def ultima_aula(self):
-        return max((a.data for a in self.aulas), default=None)
-
     # ----------------- Análise de risco de evasão -----------------
+    # Com o modelo treinado (app/modelo_evasao.json) o score é 100 x P(evadir)
+    # da regressão logística — ver app/risco.py. Sem modelo, vale a regra
+    # RISK_CONFIG abaixo. As listas (dashboard, relatórios) chamam
+    # risco.pontuar(alunos) antes, para o modelo carregar o histórico de todos
+    # em três consultas; a ficha individual calcula só para si.
     @property
     def risco_score(self):
-        """Score de 0 a 100 combinando inadimplência (peso maior) e ausência
-        de acompanhamento pedagógico recente."""
+        """Score de 0 a 100: modelo de evasão se houver; senão a regra que
+        combina inadimplência (peso maior) e ausência de acompanhamento
+        pedagógico recente."""
+        from app.risco import avaliacao
+        modelo = avaliacao(self)
+        if modelo is not None:
+            return modelo['score']
         cfg = current_app.config['RISK_CONFIG']
-        score = len(self.mensalidades_em_atraso) * cfg['peso_por_atraso']
+        score = (self.qtd_em_atraso or 0) * cfg['peso_por_atraso']
         ultima = self.ultima_aula
         if not ultima or (date.today() - ultima).days > cfg['dias_aula_recente']:
             score += cfg['peso_sem_aula_recente']
@@ -185,9 +167,13 @@ class Aluno(db.Model):
 
     @property
     def risco_motivos(self):
+        from app.risco import avaliacao
+        modelo = avaliacao(self)
+        if modelo is not None:
+            return modelo['motivos']
         cfg = current_app.config['RISK_CONFIG']
         motivos = []
-        atrasos = len(self.mensalidades_em_atraso)
+        atrasos = self.qtd_em_atraso or 0
         if atrasos:
             motivos.append(f'{atrasos} mensalidade(s) em atraso')
         ultima = self.ultima_aula
@@ -207,8 +193,10 @@ class Aluno(db.Model):
 # Mensalidade + Pagamento (equivalentes à antiga Transacao do fluxo de caixa).
 # ---------------------------------------------------------------------------
 class Mensalidade(db.Model):
+    STATUS = ('pago', 'pendente', 'em atraso')
+
     id = db.Column(db.Integer, primary_key=True)
-    aluno_id = db.Column(db.Integer, db.ForeignKey('aluno.id'), nullable=False)
+    aluno_id = db.Column(db.Integer, db.ForeignKey('aluno.id'), nullable=False, index=True)
     competencia = db.Column(db.String(7), nullable=False)  # 'YYYY-MM'
     valor = db.Column(db.Float, nullable=False)
     vencimento = db.Column(db.Date, nullable=False)
@@ -217,17 +205,42 @@ class Mensalidade(db.Model):
     pagamentos = db.relationship('Pagamento', backref='mensalidade', lazy=True,
                                  cascade='all, delete-orphan')
 
-    @property
-    def valor_pago(self):
-        return sum(p.valor for p in self.pagamentos)
+    # valor_pago: coluna calculada (soma dos pagamentos), definida no fim do arquivo.
 
-    def atualizar_status(self):
-        if self.valor_pago >= self.valor:
+    def total_pago(self):
+        """Soma dos pagamentos válida em qualquer estado do objeto.
+
+        Usa a coleção ``pagamentos`` quando ela está em memória (objeto ainda
+        não gravado, ou pagamento recém-anexado nesta sessão) e a coluna
+        calculada ``valor_pago`` quando não está — assim o valor nunca fica
+        defasado em relação ao que acabou de ser anexado."""
+        estado = sa_inspect(self)
+        if estado.transient or estado.pending or 'pagamentos' in estado.dict:
+            return sum(p.valor for p in self.pagamentos)
+        return self.valor_pago or 0.0
+
+    def atualizar_status(self, hoje=None):
+        hoje = hoje or date.today()
+        if self.total_pago() >= self.valor:
             self.status = 'pago'
-        elif self.vencimento < date.today():
+        elif self.vencimento < hoje:
             self.status = 'em atraso'
         else:
             self.status = 'pendente'
+
+    @classmethod
+    def atualizar_vencidas(cls, hoje=None):
+        """Marca como 'em atraso', em um único UPDATE, toda mensalidade pendente
+        cujo vencimento já passou. É a única transição que depende do calendário
+        ('pago' só muda ao registrar pagamento), então substitui o antigo laço
+        de atualizar_status() sobre a tabela inteira a cada página."""
+        hoje = hoje or date.today()
+        resultado = db.session.execute(
+            update(cls)
+            .where(cls.status == 'pendente', cls.vencimento < hoje)
+            .values(status='em atraso')
+        )
+        return resultado.rowcount
 
     def __repr__(self):
         return f"<Mensalidade {self.competencia} R${self.valor}>"
@@ -235,7 +248,7 @@ class Mensalidade(db.Model):
 
 class Pagamento(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    mensalidade_id = db.Column(db.Integer, db.ForeignKey('mensalidade.id'), nullable=False)
+    mensalidade_id = db.Column(db.Integer, db.ForeignKey('mensalidade.id'), nullable=False, index=True)
     data_pagamento = db.Column(db.Date, nullable=False, default=date.today)
     valor = db.Column(db.Float, nullable=False)
     observacao = db.Column(db.String(240), nullable=True)
@@ -246,7 +259,7 @@ class Pagamento(db.Model):
 # ---------------------------------------------------------------------------
 class Aula(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    aluno_id = db.Column(db.Integer, db.ForeignKey('aluno.id'), nullable=False)
+    aluno_id = db.Column(db.Integer, db.ForeignKey('aluno.id'), nullable=False, index=True)
     professora = db.Column(db.String(120), nullable=False)
     data = db.Column(db.Date, nullable=False, default=date.today)
     observacao = db.Column(db.Text, nullable=True)         # desempenho / conteúdo trabalhado
@@ -254,6 +267,44 @@ class Aula(db.Model):
 
     def __repr__(self):
         return f"<Aula aluno={self.aluno_id} data={self.data}>"
+
+
+# ---------------------------------------------------------------------------
+# Colunas calculadas em SQL (column_property).
+#
+# Cada uma vira uma subconsulta correlacionada dentro do SELECT principal, de
+# modo que listar 335 alunos ou 50 mensalidades custa uma consulta, e não uma
+# por linha (era o N+1 do defeito nº 3: valor_pago carregava os pagamentos de
+# cada uma das ~10 mil mensalidades). Ficam aqui, fora das classes, porque
+# referenciam classes declaradas depois da classe dona.
+# ---------------------------------------------------------------------------
+Mensalidade.valor_pago = column_property(
+    select(func.coalesce(func.sum(Pagamento.valor), 0.0))
+    .where(Pagamento.mensalidade_id == Mensalidade.id)
+    .correlate_except(Pagamento)
+    .scalar_subquery()
+)
+
+Aluno.qtd_em_atraso = column_property(
+    select(func.count(Mensalidade.id))
+    .where(Mensalidade.aluno_id == Aluno.id, Mensalidade.status == 'em atraso')
+    .correlate_except(Mensalidade)
+    .scalar_subquery()
+)
+
+Aluno.valor_em_aberto = column_property(
+    select(func.coalesce(func.sum(Mensalidade.valor - Mensalidade.valor_pago), 0.0))
+    .where(Mensalidade.aluno_id == Aluno.id, Mensalidade.status == 'em atraso')
+    .correlate_except(Mensalidade)
+    .scalar_subquery()
+)
+
+Aluno.ultima_aula = column_property(
+    select(func.max(Aula.data))
+    .where(Aula.aluno_id == Aluno.id)
+    .correlate_except(Aula)
+    .scalar_subquery()
+)
 
 
 # ---------------------------------------------------------------------------
@@ -280,44 +331,16 @@ def format_date_for_form(date_obj):
     return date_obj.strftime('%Y-%m-%d') if date_obj else ''
 
 
-# ---------------------------------------------------------------------------
-# Consultas de apoio à página inicial operacional (home).
-# ---------------------------------------------------------------------------
-def alunos_com_aula_no_dia(dia_semana):
-    """Alunos ativos com aula recorrente no dia da semana informado
-    (0=segunda..6=domingo), ordenados por horário."""
-    return (Aluno.query
-            .filter(Aluno.status == 'ativo',
-                    Aluno.dia_aula_semana == dia_semana)
-            .order_by(Aluno.hora_aula.asc().nullslast(), Aluno.nome)
-            .all())
-
-
-def aniversariantes_do_dia(dia=None):
-    """Alunos ativos que fazem aniversário no dia informado (padrão: hoje)."""
-    dia = dia or date.today()
-    return [a for a in Aluno.query.filter_by(status='ativo').all()
-            if a.data_nascimento
-            and (a.data_nascimento.month, a.data_nascimento.day) == (dia.month, dia.day)]
-
-
-def aniversariantes_do_mes(mes=None):
-    """Alunos ativos que fazem aniversário no mês informado (padrão: mês atual),
-    ordenados por dia."""
-    mes = mes or date.today().month
-    lista = [a for a in Aluno.query.filter_by(status='ativo').all()
-             if a.data_nascimento and a.data_nascimento.month == mes]
-    return sorted(lista, key=lambda a: a.data_nascimento.day)
-
-
-def balanco_entradas(inicio, fim):
-    """Soma dos pagamentos (entradas) com data_pagamento no intervalo
-    [inicio, fim] inclusive. Retorna float."""
-    total = (db.session.query(func.coalesce(func.sum(Pagamento.valor), 0.0))
-             .filter(Pagamento.data_pagamento >= inicio,
-                     Pagamento.data_pagamento <= fim)
-             .scalar())
-    return round(float(total or 0.0), 2)
+def ultimos_meses(n, hoje=None):
+    """['YYYY-MM', ...] dos últimos ``n`` meses, do mais antigo ao atual, contando
+    meses de calendário. (Defeito nº 6: a versão anterior subtraía 30 dias por
+    mês e, em março/abril, repetia um mês e pulava fevereiro.)"""
+    hoje = hoje or date.today()
+    meses = []
+    for i in range(n - 1, -1, -1):
+        ano, mes = divmod(hoje.year * 12 + hoje.month - 1 - i, 12)
+        meses.append(f'{ano:04d}-{mes + 1:02d}')
+    return meses
 
 
 def inicializar_instrumentos():

@@ -99,13 +99,13 @@
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
-                        <table class="table table-hover mb-0">
+                        <table class="table table-hover mb-0" id="tabelaAtencao" data-por-pagina="{{ atencao_por_pagina }}">
                             <thead class="table-light">
                                 <tr><th>Aluno</th><th>Instrumento</th><th>Situação</th><th>Fatores</th><th>Risco</th></tr>
                             </thead>
                             <tbody>
                                 {% for aluno in alunos_atencao %}
-                                <tr>
+                                <tr data-pagina="{{ loop.index0 // atencao_por_pagina }}">
                                     <td><a href="{{ url_for('aluno_detalhe', id=aluno.id) }}" onclick="mostrarSpinner()">{{ aluno.nome }}</a></td>
                                     <td>{{ aluno.instrumento.nome }}</td>
                                     <td>{% if aluno.inadimplente %}<span class="inadimplente">Inadimplente</span>{% else %}<span class="adimplente">Adimplente</span>{% endif %}</td>
@@ -118,6 +118,94 @@
                             </tbody>
                         </table>
                     </div>
+                </div>
+                {% if alunos_atencao|length > atencao_por_pagina %}
+                <div class="card-footer bg-white d-flex justify-content-between align-items-center flex-wrap gap-2 small" id="paginacaoAtencao">
+                    <span class="text-muted" id="paginacaoAtencaoInfo"></span>
+                    <nav aria-label="Páginas dos alunos que pedem atenção"><ul class="pagination pagination-sm mb-0" id="paginacaoAtencaoLinks"></ul></nav>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Frequência: presença por instrumento, alunos mais faltosos, aulas por dia da semana -->
+    <div class="row g-3 mt-1">
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-white py-3"><h5 class="mb-0"><i class="fas fa-clipboard-check me-2 text-success"></i>Presença por instrumento</h5></div>
+                <div class="card-body"><canvas id="presencaChart" height="250"></canvas></div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-white py-3"><h5 class="mb-0"><i class="fas fa-user-slash me-2 text-danger"></i>Alunos com mais faltas</h5></div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover mb-0" id="tabelaFaltosos">
+                            <thead class="table-light"><tr><th>Aluno</th><th class="text-end">Faltas</th><th class="text-end">Presença</th></tr></thead>
+                            <tbody>
+                                {% for f in faltosos %}
+                                <tr>
+                                    <td><a href="{{ url_for('aluno_detalhe', id=f.id) }}" onclick="mostrarSpinner()">{{ f.nome }}</a> <span class="text-muted small">{{ f.instrumento }}</span></td>
+                                    <td class="text-end">{{ f.faltas }} <span class="text-muted small">/ {{ f.presencas + f.faltas }}</span></td>
+                                    <td class="text-end"><span class="badge text-bg-{{ 'danger' if f.taxa < 0.6 else 'warning' if f.taxa < 0.8 else 'success' }}">{{ (100 * f.taxa)|round|int }}%</span></td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="3" class="text-center py-4 text-muted">Nenhuma aula com presença registrada.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-white py-3"><h5 class="mb-0"><i class="fas fa-calendar-week me-2 text-primary"></i>Aulas por dia da semana</h5></div>
+                <div class="card-body"><canvas id="diaSemanaChart" height="250"></canvas></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ocupação de horários: alunos ativos por dia x hora da aula -->
+    <div class="row g-3 mt-1">
+        <div class="col-12">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap">
+                    <h5 class="mb-0"><i class="fas fa-table-cells me-2 text-info"></i>Ocupação de horários</h5>
+                    <span class="small text-muted">
+                        {{ ocupacao.com_horario }} aluno(s) ativo(s) com horário definido
+                        {% if ocupacao.sem_horario %} · {{ ocupacao.sem_horario }} sem dia/hora cadastrado{% endif %}
+                        {% if ocupacao.vagas %} · {{ ocupacao.vagas }} vaga(s) por horário{% else %} · cor relativa ao horário mais cheio ({{ ocupacao.maximo }}){% endif %}
+                    </span>
+                </div>
+                <div class="card-body p-0">
+                    {% if ocupacao.horas %}
+                    <div class="table-responsive">
+                        <table class="table table-bordered text-center mb-0 align-middle" id="tabelaOcupacao">
+                            <thead class="table-light">
+                                <tr><th class="text-start">Hora</th>{% for d in ocupacao.dias %}<th>{{ d }}</th>{% endfor %}</tr>
+                            </thead>
+                            <tbody>
+                                {% for hora in ocupacao.horas %}
+                                {% set i = loop.index0 %}
+                                <tr>
+                                    <th class="text-start">{{ hora }}</th>
+                                    {% for n in ocupacao.celulas[i] %}
+                                    {% set t = ocupacao.intensidade[i][loop.index0] %}
+                                    <td style="background: rgba(54, 162, 235, {{ (0.08 + 0.72 * t)|round(2) if n else 0 }});{% if t > 0.6 %} color:#fff; font-weight:600;{% endif %}">
+                                        {% if n %}{{ n }}{% if ocupacao.vagas %}<span class="small opacity-75"> / {{ ocupacao.vagas }}</span>{% endif %}{% else %}<span class="text-muted">—</span>{% endif %}
+                                    </td>
+                                    {% endfor %}
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-center py-4 text-muted mb-0">Nenhum aluno ativo com dia e hora da aula cadastrados. Preencha o horário fixo na ficha do aluno.</p>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -176,6 +264,72 @@ document.addEventListener('DOMContentLoaded', function() {
         type: 'bar',
         data: { labels: ['Baixo','Médio','Alto'], datasets: [{ label: 'Alunos', data: [riscos['baixo'], riscos['médio'], riscos['alto']], backgroundColor: ['#52b788','#f0b84b','#e76f51'] }] },
         options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+    });
+
+    // Gráfico 5: Presença por instrumento (barras horizontais, % de presença)
+    const presencaInstrumento = {{ presenca_instrumento|tojson }};
+    if (presencaInstrumento.length === 0) {
+        const c = document.getElementById('presencaChart'); const ctx = c.getContext('2d');
+        ctx.font = '16px Arial'; ctx.textAlign = 'center'; ctx.fillStyle = '#6c757d';
+        ctx.fillText('Sem presença registrada', c.width/2, c.height/2);
+    } else {
+        new Chart(document.getElementById('presencaChart').getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: presencaInstrumento.map(r => r.instrumento),
+                datasets: [{ label: 'Presença (%)', data: presencaInstrumento.map(r => Math.round(100 * r.taxa)),
+                    backgroundColor: presencaInstrumento.map(r => r.taxa >= 0.8 ? '#52b788' : r.taxa >= 0.6 ? '#f0b84b' : '#e76f51') }]
+            },
+            options: { indexAxis: 'y', responsive: true, plugins: { legend: { display: false },
+                tooltip: { callbacks: { label: function(ctx) { const r = presencaInstrumento[ctx.dataIndex];
+                    return ctx.parsed.x + '% · ' + r.alunos + ' aluno(s), ' + r.aulas + ' aula(s), ' + r.faltas + ' falta(s)'; } } } },
+                scales: { x: { min: 0, max: 100, ticks: { callback: v => v + '%' } } } }
+        });
+    }
+
+    // Alunos que pedem atenção: 10 por página (as linhas já vêm ordenadas por score;
+    // a paginação só esconde/mostra, sem nova requisição)
+    const tabelaAtencao = document.getElementById('tabelaAtencao');
+    const linksAtencao = document.getElementById('paginacaoAtencaoLinks');
+    if (tabelaAtencao && linksAtencao) {
+        const linhas = [...tabelaAtencao.querySelectorAll('tbody tr[data-pagina]')];
+        const porPagina = parseInt(tabelaAtencao.dataset.porPagina, 10);
+        const total = linhas.length, paginas = Math.ceil(total / porPagina);
+        const info = document.getElementById('paginacaoAtencaoInfo');
+        function mostrarPagina(p) {
+            p = Math.max(0, Math.min(paginas - 1, p));
+            linhas.forEach(tr => { tr.style.display = (parseInt(tr.dataset.pagina, 10) === p) ? '' : 'none'; });
+            const ini = p * porPagina + 1, fim = Math.min(total, (p + 1) * porPagina);
+            info.textContent = 'Mostrando ' + ini + '–' + fim + ' de ' + total + ' aluno(s)';
+            linksAtencao.innerHTML = '';
+            const item = (rotulo, alvo, opts) => {
+                const li = document.createElement('li');
+                li.className = 'page-item' + (opts.ativo ? ' active' : '') + (opts.desabilitado ? ' disabled' : '');
+                const a = document.createElement('a');
+                a.className = 'page-link'; a.href = '#'; a.textContent = rotulo;
+                if (opts.ariaLabel) a.setAttribute('aria-label', opts.ariaLabel);
+                a.addEventListener('click', ev => { ev.preventDefault(); if (!opts.desabilitado) mostrarPagina(alvo); });
+                li.appendChild(a); linksAtencao.appendChild(li);
+            };
+            item('‹', p - 1, { desabilitado: p === 0, ariaLabel: 'Anterior' });
+            // janela de até 5 números em torno da página atual
+            let de = Math.max(0, p - 2), ate = Math.min(paginas - 1, de + 4); de = Math.max(0, ate - 4);
+            for (let i = de; i <= ate; i++) item(String(i + 1), i, { ativo: i === p });
+            item('›', p + 1, { desabilitado: p === paginas - 1, ariaLabel: 'Próxima' });
+        }
+        mostrarPagina(0);
+    }
+
+    // Gráfico 6: Aulas e faltas por dia da semana
+    const diaSemana = {{ aulas_dia_semana|tojson }};
+    new Chart(document.getElementById('diaSemanaChart').getContext('2d'), {
+        type: 'bar',
+        data: { labels: diaSemana.dias.map(d => d.slice(0, 3)),
+            datasets: [
+                { label: 'Aulas', data: diaSemana.aulas, backgroundColor: 'rgba(54, 162, 235, 0.6)' },
+                { label: 'Faltas', data: diaSemana.faltas, backgroundColor: 'rgba(255, 99, 132, 0.6)' }
+            ] },
+        options: { responsive: true, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
     });
 });
 </script>

@@ -31,6 +31,7 @@
                     <dt class="col-5">Aula</dt><dd class="col-7">{{ aluno.horario_aula_descricao or 'Sem horário fixo' }}</dd>
                     <dt class="col-5">Mensalidade</dt><dd class="col-7">R$ {{ aluno.mensalidade_base|moeda }}</dd>
                     <dt class="col-5">Status</dt><dd class="col-7">{{ aluno.status|capitalize }}</dd>
+                    <dt class="col-5">Aula semanal</dt><dd class="col-7">{{ aluno.horario_aula or '—' }}</dd>
                 </dl>
             </div>
         </div>
@@ -85,7 +86,17 @@
 </div>
 
 <div class="card shadow-sm border-0">
-    <div class="card-header bg-white"><h5 class="mb-0"><i class="fas fa-book-open me-2 text-primary"></i>Acompanhamento pedagógico</h5></div>
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="fas fa-book-open me-2 text-primary"></i>Acompanhamento pedagógico</h5>
+        {% if presenca.taxa is not none %}
+        <span class="small">Presença:
+            <span class="badge text-bg-{{ 'danger' if presenca.taxa < 0.6 else 'warning' if presenca.taxa < 0.8 else 'success' }}">{{ (100 * presenca.taxa)|round|int }}%</span>
+            <span class="text-muted">{{ presenca.presencas }} presença(s) e {{ presenca.faltas }} falta(s) em {{ presenca.aulas }} aula(s)</span>
+        </span>
+        {% else %}
+        <span class="small text-muted">Presença: — (nenhuma aula com registro de presença)</span>
+        {% endif %}
+    </div>
     <div class="card-body">
         <div class="row g-3">
             {% for aula in aluno.aulas|sort(attribute='data', reverse=true) %}
@@ -119,6 +130,7 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <form method="POST" action="{{ url_for('editar_aluno', id=aluno.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="modal-header"><h5 class="modal-title">Editar aluno</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                 <div class="modal-body">
                     <div class="mb-3"><label class="form-label">Nome completo *</label><input type="text" class="form-control" name="nome" value="{{ aluno.nome }}" required></div>
@@ -132,6 +144,15 @@
                     <div class="row">
                         <div class="col-6 mb-3"><label class="form-label">Data de nascimento</label><input type="date" class="form-control" name="data_nascimento" value="{{ aluno.data_nascimento.isoformat() if aluno.data_nascimento else '' }}"></div>
                         <div class="col-6 mb-3"><label class="form-label">Mensalidade (R$)</label><input type="number" step="0.01" min="0" class="form-control" name="mensalidade_base" value="{{ '%.2f'|format(aluno.mensalidade_base) }}"></div>
+                    </div>
+                    <div class="row">
+                        <div class="col-6 mb-3"><label class="form-label">Dia da aula</label>
+                            <select class="form-select" name="dia_aula_semana">
+                                <option value="">—</option>
+                                {% for d in ['Segunda','Terça','Quarta','Quinta','Sexta','Sábado','Domingo'] %}<option value="{{ loop.index0 }}" {{ 'selected' if aluno.dia_aula_semana == loop.index0 else '' }}>{{ d }}</option>{% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-6 mb-3"><label class="form-label">Hora da aula</label><input type="time" class="form-control" name="hora_aula" value="{{ aluno.hora_aula.strftime('%H:%M') if aluno.hora_aula else '' }}"></div>
                     </div>
                     <div class="mb-3"><label class="form-label">E-mail</label><input type="email" class="form-control" name="email" value="{{ aluno.email or '' }}"></div>
                     <div class="mb-3"><label class="form-label">Endereço</label><input type="text" class="form-control" name="endereco" value="{{ aluno.endereco or '' }}"></div>

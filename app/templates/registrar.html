@@ -1,47 +1,66 @@
 <!-- templates/registrar.html -->
 {% extends 'base.html' %}
 
-{% block title %}Registrar{% endblock %}
+{% block title %}{% if primeiro_acesso %}Primeiro acesso{% else %}Novo usuário{% endif %}{% endblock %}
 
 {% block content %}
 <div class="container mt-5">
     <div class="row">
         <div class="col-md-6 offset-md-3">
             <div class="card">
-                <div class="card-header bg-primary text-white d-flex align-items-center">
-                    <img src="{{ url_for('static', filename='logo.jpeg') }}" alt="Studio Duo" height="36" class="me-2 logo-moldura">
-                    <h4 class="mb-0">Studio Duo · Criar Conta</h4>
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0">
+                        {% if primeiro_acesso %}
+                            <i class="fas fa-key me-2"></i>Criar a conta da gestora
+                        {% else %}
+                            <i class="fas fa-user-plus me-2"></i>Cadastrar usuário
+                        {% endif %}
+                    </h4>
                 </div>
                 <div class="card-body">
+                    {% if primeiro_acesso %}
+                    <div class="alert alert-info">
+                        Instalação nova. A primeira conta criada será a <strong>gestora</strong>,
+                        responsável por cadastrar os demais usuários depois.
+                    </div>
+                    {% endif %}
                     <form method="POST">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <div class="mb-3">
-                            <label for="nome" class="form-label">Nome Completo</label>
+                            <label for="nome" class="form-label">Nome completo</label>
                             <input type="text" class="form-control" id="nome" name="nome" required>
                         </div>
                         <div class="mb-3">
-                            <label for="email" class="form-label">Email</label>
+                            <label for="email" class="form-label">E-mail</label>
                             <input type="email" class="form-control" id="email" name="email" required>
                         </div>
+                        {% if not primeiro_acesso %}
                         <div class="mb-3">
                             <label for="papel" class="form-label">Perfil</label>
                             <select class="form-select" id="papel" name="papel">
-                                <option value="gestora">Proprietária / Gestora</option>
+                                <option value="aluno" selected>Aluno</option>
                                 <option value="professora">Professora</option>
-                                <option value="aluno">Aluno</option>
+                                <option value="gestora">Proprietária / Gestora</option>
                             </select>
-                            <div class="form-text">Para o perfil Aluno, use o mesmo e-mail cadastrado na ficha para visualizar seus dados.</div>
+                            <div class="form-text">Para o perfil Aluno, use o mesmo e-mail cadastrado na ficha para que ele visualize os próprios dados.</div>
                         </div>
+                        {% endif %}
                         <div class="mb-3">
                             <label for="senha" class="form-label">Senha</label>
-                            <input type="password" class="form-control" id="senha" name="senha" required>
+                            <input type="password" class="form-control" id="senha" name="senha" minlength="6" required>
+                            <div class="form-text">Mínimo de 6 caracteres.</div>
                         </div>
                         <div class="d-grid">
-                            <button type="submit" class="btn btn-primary">Registrar</button>
+                            <button type="submit" class="btn btn-primary">
+                                {% if primeiro_acesso %}Criar conta{% else %}Cadastrar{% endif %}
+                            </button>
                         </div>
                     </form>
+                    {% if not primeiro_acesso %}
                     <div class="mt-3 text-center">
-                        <p>Já tem uma conta? <a href="{{ url_for('login') }}">Faça login</a></p>
+                        <a href="{{ url_for('dashboard') }}">Voltar ao painel</a>
                     </div>
+                    {% endif %}
                 </div>
             </div>
         </div>
