@@ -103,10 +103,22 @@ preservando os ids; depois avança as sequências). A URL do destino vem de
 `NUVEM_DATABASE_URL` (ou `DATABASE_URL`) num arquivo `.env*`, nunca versionado:
 
 ```bash
-python migrar_para_nuvem.py --dry-run --env .env.migracao   # compara estrutura e conta linhas
-python migrar_para_nuvem.py --env .env.migracao             # carrega (destino precisa estar vazio)
-python migrar_para_nuvem.py --limpar --env .env.migracao    # apaga as linhas de lá e carrega tudo
+python migrar_para_nuvem.py --dry-run --env .env.migracao       # compara estrutura e conta linhas
+python migrar_para_nuvem.py --env .env.migracao                 # carrega (destino precisa estar vazio)
+python migrar_para_nuvem.py --limpar --env .env.migracao        # apaga as linhas de lá e carrega tudo
+python migrar_para_nuvem.py --so-horarios --env .env.migracao   # só dia/hora da aula dos alunos
 ```
+
+**`--so-horarios`** é a carga mínima, para quando a nuvem já tem os dados e só falta
+o horário fixo da aula: um `UPDATE` por aluno, casando pelo id, **apenas** em
+`dia_aula_semana` e `hora_aula`. Não apaga nada, não toca em nenhuma outra tabela
+e **pula** (listando) o aluno cujo horário na nuvem já esteja preenchido e
+diferente — assim um horário cadastrado pela gestora no app publicado não é
+sobrescrito pelo banco local. Aceita `--dry-run` e é idempotente: rodar de novo
+não muda nada.
+
+> Prefira `--so-horarios` a `--limpar` quando o app publicado já estiver em uso:
+> `--limpar` apaga tudo o que foi cadastrado na nuvem antes de recarregar.
 
 ## Risco de evasão (aprendizagem de máquina)
 
@@ -211,11 +223,11 @@ python inicializar_db.py
 Ele não apaga nada, mas **escreve** (DDL): combine com o responsável pelo banco
 antes. Para enviar dados do SQLite local, use `migrar_para_nuvem.py` (acima).
 
-> A carga atual da nuvem é de 15/09/2026: as colunas `dia_aula_semana` e
-> `hora_aula` **existem lá, mas estão vazias** (0 alunos preenchidos em
-> 22/09/2026), então a grade de ocupação do dashboard aparece vazia em produção.
-> A próxima carga (`python migrar_para_nuvem.py --limpar --env .env.migracao`)
-> leva os horários junto.
+> A carga de dados da nuvem é de 15/09/2026; os horários fixos de aula foram
+> levados em 22/09/2026 com `migrar_para_nuvem.py --so-horarios` (321 alunos,
+> nenhuma outra coluna alterada). A nuvem tem um registro de aula a mais que o
+> banco local — criado pelo app publicado —, então **evite `--limpar`**: ele
+> apagaria o que foi cadastrado em produção.
 
 ### Desempenho em produção
 
