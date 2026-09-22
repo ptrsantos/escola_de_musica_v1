@@ -1,7 +1,9 @@
 from flask_wtf import FlaskForm
 from wtforms import (StringField, FloatField, DateField, SelectField,
-                     EmailField, TextAreaField, SubmitField)
+                     EmailField, TextAreaField, SubmitField, TimeField)
 from wtforms.validators import DataRequired, Length, NumberRange, Optional, Email
+
+from app.models import DIAS_SEMANA_PT
 
 
 class AlunoForm(FlaskForm):
@@ -17,6 +19,11 @@ class AlunoForm(FlaskForm):
     data_nascimento = DateField('Data de nascimento', format='%Y-%m-%d', validators=[Optional()])
     email = EmailField('E-mail', validators=[Optional(), Email(message='E-mail inválido')])
     endereco = StringField('Endereço', validators=[Optional(), Length(max=240)])
+    dia_aula_semana = SelectField(
+        'Dia da aula', coerce=int, validators=[Optional()],
+        choices=[(-1, 'Sem horário fixo')] + list(enumerate(DIAS_SEMANA_PT)),
+    )
+    hora_aula = TimeField('Horário da aula', format='%H:%M', validators=[Optional()])
     submit = SubmitField('Salvar')
 
 

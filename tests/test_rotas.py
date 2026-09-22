@@ -81,8 +81,8 @@ def test_logout(dados, client):
 def test_dashboard_metricas(dados, client):
     logar_gestora(client)
     html = texto(client.get('/dashboard'))
-    assert 'R$ 1900,00' in html                 # recebido
-    assert '/ 3030,00' in html                  # previsto
+    assert 'R$ 1.900,00' in html                 # recebido
+    assert '/ 3.030,00' in html                  # previsto
     assert '<h2 class="text-primary">3</h2>' in html   # ativos
     assert '<h2 class="text-danger">2</h2>' in html    # inadimplentes
     assert '<h2 class="text-warning">3</h2>' in html   # mensalidades em atraso
@@ -118,7 +118,7 @@ def test_api_dashboard_data(dados, client):
 def test_relatorios_totais(dados, client):
     logar_gestora(client)
     html = texto(client.get('/relatorios'))
-    assert 'R$ 3030,00' in html and 'R$ 1900,00' in html and 'R$ 1130,00' in html
+    assert 'R$ 3.030,00' in html and 'R$ 1.900,00' in html and 'R$ 1.130,00' in html
     assert 'R$ 600,00' in html   # em aberto do Bruno
     assert 'R$ 280,00' in html   # em aberto da Carla
     assert 'Diego Lima' in html  # relatórios listam também os inativos

@@ -1,0 +1,128 @@
+{% extends 'base.html' %}
+
+{% block title %}Usuários{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Usuários</h2>
+    <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#novoUsuarioModal">
+        <i class="fas fa-plus me-1"></i>Novo usuário
+    </button>
+</div>
+
+<div class="card shadow-sm border-0">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover mb-0 align-middle">
+                <thead class="table-light"><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th class="text-end">Ações</th></tr></thead>
+                <tbody>
+                    {% for u in usuarios %}
+                    <tr>
+                        <td class="fw-semibold">{{ u.nome }}{% if u.id == current_user.id %} <span class="badge text-bg-info">você</span>{% endif %}</td>
+                        <td>{{ u.email }}</td>
+                        <td><span class="badge text-bg-secondary">{{ u.papel|capitalize }}</span></td>
+                        <td class="text-end">
+                            <div class="btn-group btn-group-sm">
+                                <button type="button" class="btn btn-outline-secondary" title="Editar"
+                                        data-bs-toggle="modal" data-bs-target="#editarUsuarioModal"
+                                        data-id="{{ u.id }}" data-nome="{{ u.nome }}" data-email="{{ u.email }}" data-papel="{{ u.papel }}"><i class="fas fa-edit"></i></button>
+                                {% if u.id != current_user.id %}
+                                <button type="button" class="btn btn-outline-danger" title="Excluir"
+                                        data-bs-toggle="modal" data-bs-target="#excluirUsuarioModal"
+                                        data-id="{{ u.id }}" data-nome="{{ u.nome }}"><i class="fas fa-trash"></i></button>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="4" class="text-center py-4 text-muted">Nenhum usuário cadastrado.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Novo Usuário -->
+<div class="modal fade" id="novoUsuarioModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('adicionar_usuario') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="modal-header"><h5 class="modal-title">Novo usuário</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <div class="mb-3"><label class="form-label">Nome *</label><input type="text" class="form-control" name="nome" required></div>
+                    <div class="mb-3"><label class="form-label">E-mail *</label><input type="email" class="form-control" name="email" required></div>
+                    <div class="mb-3"><label class="form-label">Senha *</label><input type="password" class="form-control" name="senha" required></div>
+                    <div class="mb-3"><label class="form-label">Perfil</label>
+                        <select class="form-select" name="papel">
+                            {% for p in papeis %}<option value="{{ p }}">{{ p|capitalize }}</option>{% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer"><button type="submit" class="btn btn-primary">Salvar</button></div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Editar Usuário -->
+<div class="modal fade" id="editarUsuarioModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" id="form-editar-usuario"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="modal-header"><h5 class="modal-title">Editar usuário</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <div class="mb-3"><label class="form-label">Nome *</label><input type="text" class="form-control" name="nome" id="edit-u-nome" required></div>
+                    <div class="mb-3"><label class="form-label">E-mail *</label><input type="email" class="form-control" name="email" id="edit-u-email" required></div>
+                    <div class="mb-3"><label class="form-label">Nova senha</label><input type="password" class="form-control" name="senha" placeholder="Deixe em branco para manter a atual"></div>
+                    <div class="mb-3"><label class="form-label">Perfil</label>
+                        <select class="form-select" name="papel" id="edit-u-papel">
+                            {% for p in papeis %}<option value="{{ p }}">{{ p|capitalize }}</option>{% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer"><button type="submit" class="btn btn-primary">Salvar alterações</button></div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Excluir Usuário -->
+<div class="modal fade" id="excluirUsuarioModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title">Confirmar exclusão</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body"><p>Excluir o usuário <strong id="excluir-u-nome"></strong>?</p><p class="text-danger small mb-0">Esta ação não pode ser desfeita.</p></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <form id="form-excluir-usuario" method="POST"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn btn-danger">Excluir</button></form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const editModal = document.getElementById('editarUsuarioModal');
+        if (editModal) {
+            editModal.addEventListener('show.bs.modal', function(event) {
+                const b = event.relatedTarget;
+                document.getElementById('form-editar-usuario').action = '/editar_usuario/' + b.getAttribute('data-id');
+                document.getElementById('edit-u-nome').value = b.getAttribute('data-nome');
+                document.getElementById('edit-u-email').value = b.getAttribute('data-email');
+                document.getElementById('edit-u-papel').value = b.getAttribute('data-papel');
+            });
+        }
+        const delModal = document.getElementById('excluirUsuarioModal');
+        if (delModal) {
+            delModal.addEventListener('show.bs.modal', function(event) {
+                const b = event.relatedTarget;
+                document.getElementById('excluir-u-nome').textContent = b.getAttribute('data-nome');
+                document.getElementById('form-excluir-usuario').action = '/excluir_usuario/' + b.getAttribute('data-id');
+            });
+        }
+    });
+</script>
+{% endblock %}

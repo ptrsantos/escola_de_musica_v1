@@ -156,7 +156,7 @@ def test_professora_edita_a_observacao_da_aula(dados, app, client):
     with app.app_context():
         aula_id = Aula.query.filter_by(aluno_id=dados['ana']).one().id
     logar_professora(client)
-    r = client.post(f'/aula/{aula_id}/editar',
+    r = client.post(f'/editar_aula/{aula_id}',
                     data={'observacao': 'Revisão de escalas', 'presenca': 'presente',
                           'orientacao_estudo': 'Estudar peça nova'})
     assert r.status_code == 302
@@ -172,7 +172,7 @@ def test_editar_aula_nao_empilha_o_marcador_de_presenca(dados, app, client):
         aula_id = Aula.query.filter_by(aluno_id=dados['ana']).one().id
     logar_professora(client)
     for texto_obs in ['Primeira versão', 'Segunda versão']:
-        client.post(f'/aula/{aula_id}/editar', data={'observacao': texto_obs,
+        client.post(f'/editar_aula/{aula_id}', data={'observacao': texto_obs,
                                                      'presenca': 'falta'})
     with app.app_context():
         assert db.session.get(Aula, aula_id).observacao == 'Presença: 0P/1A · Segunda versão'
@@ -184,7 +184,7 @@ def test_editar_aula_sem_escolher_presenca_preserva_a_marcacao(dados, app, clien
         db.session.get(Aula, aula_id).observacao = 'Presença: 0P/1A · Faltou'
         db.session.commit()
     logar_professora(client)
-    client.post(f'/aula/{aula_id}/editar', data={'observacao': 'Faltou, avisou depois'})
+    client.post(f'/editar_aula/{aula_id}', data={'observacao': 'Faltou, avisou depois'})
     with app.app_context():
         assert db.session.get(Aula, aula_id).observacao == 'Presença: 0P/1A · Faltou, avisou depois'
 
@@ -197,7 +197,7 @@ def test_editar_aula_com_presenca_vazia_remove_a_marcacao(dados, app, client):
         db.session.get(Aula, aula_id).observacao = 'Presença: 1P/0A · Veio'
         db.session.commit()
     logar_professora(client)
-    client.post(f'/aula/{aula_id}/editar', data={'observacao': 'Veio', 'presenca': ''})
+    client.post(f'/editar_aula/{aula_id}', data={'observacao': 'Veio', 'presenca': ''})
     with app.app_context():
         assert db.session.get(Aula, aula_id).observacao == 'Veio'
 
@@ -210,7 +210,24 @@ def test_professora_nao_edita_aula_de_aluno_de_outra(dados, app, client):
         db.session.commit()
         aula_id = aula.id
     logar_professora(client)
-    assert client.post(f'/aula/{aula_id}/editar',
+    assert client.post(f'/editar_aula/{aula_id}',
                        data={'observacao': 'invadindo'}).status_code == 403
     with app.app_context():
         assert db.session.get(Aula, aula_id).observacao == 'Aula da Carla'
+
+
+# ---------------------------------------------------------------------------
+# Tela inicial
+# ---------------------------------------------------------------------------
+def test_inicio_nao_mostra_entradas_para_a_professora(dados, client):
+    """A tela Início traz o caixa do dia e do mês — "valores de entrada", na
+    frase da direção. Fica só para a gestora."""
+    logar_professora(client)
+    html = texto(client.get('/inicio'))
+    assert 'Entradas de hoje' not in html and 'Entradas do mês' not in html
+    assert 'Agenda' in html          # o resto da tela continua
+
+    client.get('/logout')
+    logar_gestora(client)
+    html = texto(client.get('/inicio'))
+    assert 'Entradas de hoje' in html and 'Entradas do mês' in html

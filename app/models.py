@@ -12,6 +12,16 @@ DIAS_SEMANA = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Dom
 
 
 # ---------------------------------------------------------------------------
+# Dias da semana (convenção Python weekday(): segunda=0 ... domingo=6).
+# Usado no cadastro de horário de aula recorrente e na "agenda do dia".
+# ---------------------------------------------------------------------------
+DIAS_SEMANA_PT = [
+    'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira',
+    'Sexta-feira', 'Sábado', 'Domingo',
+]
+
+
+# ---------------------------------------------------------------------------
 # Usuário (ator do sistema). Adaptado do fluxo de caixa com o campo "papel"
 # para diferenciar gestora (proprietária), professora e aluno.
 # ---------------------------------------------------------------------------
@@ -74,6 +84,11 @@ class Aluno(db.Model):
     # Horário fixo da aula semanal (colunas criadas no Neon pelo Paulo; no
     # repositório desde 17/09). dia_aula_semana segue date.weekday():
     # 0 = segunda … 6 = domingo. Base do indicador de ocupação de horários.
+    dia_aula_semana = db.Column(db.Integer, nullable=True)
+    hora_aula = db.Column(db.Time, nullable=True)
+
+    # Horário de aula recorrente (semanal). Convenção weekday(): segunda=0..domingo=6.
+    # NULL = aluno sem horário fixo definido.
     dia_aula_semana = db.Column(db.Integer, nullable=True)
     hora_aula = db.Column(db.Time, nullable=True)
 
@@ -296,7 +311,9 @@ Aluno.ultima_aula = column_property(
 # Funções utilitárias (adaptadas do fluxo de caixa).
 # ---------------------------------------------------------------------------
 def format_currency(value):
-    return f"R$ {value:.2f}".replace('.', ',')
+    # Padrão brasileiro com separador de milhar (ex.: R$ 1.234,50)
+    formatado = f"{value:,.2f}"
+    return "R$ " + formatado.replace(',', 'X').replace('.', ',').replace('X', '.')
 
 
 def get_first_day_of_month():
@@ -312,6 +329,58 @@ def get_last_day_of_month():
 
 def format_date_for_form(date_obj):
     return date_obj.strftime('%Y-%m-%d') if date_obj else ''
+
+
+# ---------------------------------------------------------------------------
+# Consultas de apoio à página inicial operacional (home).
+# ---------------------------------------------------------------------------
+def alunos_com_aula_no_dia(dia_semana, alunos_ids=None):
+    """Alunos ativos com aula recorrente no dia da semana informado
+    (0=segunda..6=domingo), ordenados por horário.
+
+    ``alunos_ids`` limita a agenda a um conjunto de alunos — é o que mantém a
+    professora vendo só os alunos dela; ``None`` = a escola inteira."""
+    consulta = Aluno.query.filter(Aluno.status == 'ativo',
+                                  Aluno.dia_aula_semana == dia_semana)
+    if alunos_ids is not None:
+        consulta = consulta.filter(Aluno.id.in_(alunos_ids))
+    return consulta.order_by(Aluno.hora_aula.asc().nullslast(), Aluno.nome).all()
+
+
+def _ativos(alunos_ids=None):
+    """Alunos ativos, opcionalmente limitados a um conjunto de ids (o escopo da
+    professora). ``None`` = a escola inteira."""
+    consulta = Aluno.query.filter_by(status='ativo')
+    if alunos_ids is not None:
+        consulta = consulta.filter(Aluno.id.in_(alunos_ids))
+    return consulta.all()
+
+
+def aniversariantes_do_dia(dia=None, alunos_ids=None):
+    """Alunos ativos que fazem aniversário no dia informado (padrão: hoje)."""
+    dia = dia or date.today()
+    return [a for a in _ativos(alunos_ids)
+            if a.data_nascimento
+            and (a.data_nascimento.month, a.data_nascimento.day) == (dia.month, dia.day)]
+
+
+def aniversariantes_do_mes(mes=None, alunos_ids=None):
+    """Alunos ativos que fazem aniversário no mês informado (padrão: mês atual),
+    ordenados por dia."""
+    mes = mes or date.today().month
+    lista = [a for a in _ativos(alunos_ids)
+             if a.data_nascimento and a.data_nascimento.month == mes]
+    return sorted(lista, key=lambda a: a.data_nascimento.day)
+
+
+def balanco_entradas(inicio, fim):
+    """Soma dos pagamentos (entradas) com data_pagamento no intervalo
+    [inicio, fim] inclusive. Retorna float."""
+    total = (db.session.query(func.coalesce(func.sum(Pagamento.valor), 0.0))
+             .filter(Pagamento.data_pagamento >= inicio,
+                     Pagamento.data_pagamento <= fim)
+             .scalar())
+    return round(float(total or 0.0), 2)
 
 
 def ultimos_meses(n, hoje=None):
