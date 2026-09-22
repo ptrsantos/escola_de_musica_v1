@@ -164,6 +164,87 @@ pontuação idêntica ao scikit-learn, motivos, fallback para a regra) e o
 desempenho com ~10 mil mensalidades (cada página gerencial em menos de 1 s e
 sem consultas N+1, com o modelo ligado).
 
+## Deploy (nuvem)
+
+A aplicação é publicada como função serverless no **Vercel**. O repositório já
+traz os dois arquivos necessários:
+
+| Arquivo | Papel |
+|---|---|
+| `api/index.py` | ponto de entrada: monta o `sys.path` e expõe `app = create_app()` como handler WSGI |
+| `vercel.json` | build `@vercel/python` a partir de `api/index.py` e rota `/(.*)` para ele |
+| `.vercelignore` | mantém fora do pacote o `.venv/`, o `instance/` e os `*.db` locais |
+
+Não há build de front-end nem pasta `static/` — Bootstrap e Chart.js vêm de CDN.
+O `requirements.txt` instalado em produção **não tem pandas nem scikit-learn**: o
+modelo viaja como `app/modelo_evasao.json`, dentro do pacote `app/`, e é pontuado
+em Python puro por `app/risco.py`.
+
+### Variáveis de ambiente (painel do provedor, nunca em arquivo)
+
+| Variável | Valor |
+|---|---|
+| `DATABASE_URL` | `postgresql://USUARIO:SENHA@HOST/BANCO?sslmode=require` — o Postgres do grupo (Neon) exige TLS; o host com sufixo `-pooler` usa o pool de conexões, adequado a funções serverless |
+| `SECRET_KEY` | valor aleatório e exclusivo: `python -c "import secrets; print(secrets.token_urlsafe(48))"` |
+
+> ⚠️ **Sem `DATABASE_URL` a aplicação cai no SQLite sem avisar** (é o padrão para o
+> ambiente local). No Vercel o sistema de arquivos é somente leitura e efêmero: o
+> app parece subir, mas os dados não persistem. Confira a variável antes de
+> divulgar a URL. Ao colar o valor no painel, cuidado com espaço ou quebra de
+> linha no fim — o `create_app()` faz `strip()`, mas é fácil colar errado.
+
+Um `.env` com `DATABASE_URL` também funciona localmente (útil para testar a
+aplicação contra o banco da nuvem), mas ele não é versionado nem enviado ao
+provedor. Veja `.env.example`.
+
+### Preparar o banco da nuvem
+
+O `db.create_all()` não roda sozinho em produção. Com as tabelas já criadas lá,
+rode **uma vez**, a partir de uma máquina com a `DATABASE_URL` da nuvem, para
+garantir as colunas e os índices que tenham sido adicionados depois da carga
+inicial (`dia_aula_semana`, `hora_aula`, índices das chaves estrangeiras):
+
+```bash
+python inicializar_db.py
+```
+
+Ele não apaga nada, mas **escreve** (DDL): combine com o responsável pelo banco
+antes. Para enviar dados do SQLite local, use `migrar_para_nuvem.py` (acima).
+
+> A carga atual da nuvem é de 15/09/2026: as colunas `dia_aula_semana` e
+> `hora_aula` **existem lá, mas estão vazias** (0 alunos preenchidos em
+> 22/09/2026), então a grade de ocupação do dashboard aparece vazia em produção.
+> A próxima carga (`python migrar_para_nuvem.py --limpar --env .env.migracao`)
+> leva os horários junto.
+
+### Desempenho em produção
+
+Medido em 22/09/2026 com o `DATABASE_URL` da nuvem apontado a partir de uma
+máquina no Brasil (nada foi escrito no banco):
+
+| Página | SQLite local | Postgres da nuvem, da máquina do dev | Consultas |
+|---|---|---|---|
+| `/dashboard` | 167 ms | 3,8 s | 14 |
+| `/alunos` | 145 ms | 3,1 s | 8 |
+| `/relatorios` | 136 ms | 3,3 s | 9 |
+| `/acompanhamento` | 113 ms | 2,6 s | 4 |
+| `/financeiro` | 51 ms | 2,3 s | 6 |
+| ficha do aluno | 15 ms | 2,3 s | 10 |
+
+A diferença é **distância de rede**, não a aplicação: cada consulta custa ~145 ms
+de ida e volta daqui, e a primeira conexão (TLS + wake do banco) levou 5 s. O
+banco fica em `us-east-1`; a região padrão das funções do Vercel (`iad1`) é a
+mesma, então **em produção o custo por consulta cai para poucos milissegundos** —
+o usuário paga a latência do Brasil uma vez só, na requisição HTTP. Se a função
+for movida para outra região (ex.: `gru1`, São Paulo), o efeito acima volta,
+multiplicado pelo número de consultas da página: mantenha função e banco na mesma
+região.
+
+Se ainda assim pesar, o caminho conhecido é reduzir as idas ao banco por página e
+só executar o `UPDATE` de `pendente → em atraso` quando houver alguma mensalidade
+vencida a corrigir (hoje ele roda em toda página financeira; na nuvem, hoje, ele
+não encontra nenhuma linha para mudar).
+
 ## Estrutura
 
 ```
