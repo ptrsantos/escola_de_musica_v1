@@ -3,10 +3,11 @@
 {% block title %}Acompanhamento{% endblock %}
 
 {% block content %}
+{% set gestora = current_user.papel == 'gestora' %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
         <h2 class="mb-0">Acompanhamento Pedagógico</h2>
-        <p class="text-muted mb-0">Registre o que foi trabalhado e os próximos estudos.</p>
+        <p class="text-muted mb-0">Registre o que foi trabalhado e os próximos estudos.{% if not gestora %} Você vê e edita as aulas dos seus alunos.{% endif %}</p>
     </div>
     <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#novaAulaModal">
         <i class="fas fa-plus me-1"></i>Registrar aula
@@ -20,7 +21,15 @@
             <div class="card-body">
                 <div class="d-flex justify-content-between">
                     <div><h5 class="mb-1">{{ aula.aluno.nome }}</h5><div class="text-muted small">{{ aula.data.strftime('%d/%m/%Y') }} · {{ aula.professora }}</div></div>
-                    <i class="fas fa-music text-primary"></i>
+                    <button type="button" class="btn btn-sm btn-outline-primary btn-editar-aula"
+                            title="Editar acompanhamento"
+                            data-id="{{ aula.id }}"
+                            data-aluno="{{ aula.aluno.nome }}"
+                            data-observacao="{{ sem_marcador(aula.observacao) }}"
+                            data-orientacao="{{ aula.orientacao_estudo or '' }}"
+                            data-presenca="{% set p, f = contar_presenca(aula.observacao) %}{{ 'presente' if p else 'falta' if f else '' }}">
+                        <i class="fas fa-pen"></i>
+                    </button>
                 </div>
                 <hr>
                 <div class="small text-uppercase fw-bold text-secondary">Observações da aula</div>
@@ -48,8 +57,12 @@
                             <select class="form-select" name="aluno_id" required>
                                 {% for aluno in alunos %}<option value="{{ aluno.id }}">{{ aluno.nome }}</option>{% endfor %}
                             </select>
+                            {% if not gestora and not alunos %}<div class="form-text text-danger">Nenhum aluno vinculado a você. Peça à gestora que registre a primeira aula de cada aluno seu.</div>{% endif %}
                         </div>
-                        <div class="col-md-6"><label class="form-label">Professora</label><input class="form-control" name="professora" value="{{ current_user.nome }}"></div>
+                        <div class="col-md-6"><label class="form-label">Professora</label>
+                            <input class="form-control" name="professora" value="{{ current_user.nome }}" {% if not gestora %}readonly{% endif %}>
+                            {% if not gestora %}<div class="form-text">É o seu nome que vincula a aula ao aluno.</div>{% endif %}
+                        </div>
                         <div class="col-md-3"><label class="form-label">Data</label><input type="date" class="form-control" name="data" value="{{ hoje }}" required></div>
                         <div class="col-md-3"><label class="form-label">Presença</label>
                             <select class="form-select" name="presenca">
@@ -67,4 +80,51 @@
         </div>
     </div>
 </div>
+
+<!-- Modal Editar Aula -->
+<div class="modal fade" id="editarAulaModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <form method="POST" id="formEditarAula">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="voltar" value="{{ url_for('acompanhamento') }}">
+                <div class="modal-header"><h5 class="modal-title">Editar acompanhamento — <span id="editarAulaAluno"></span></h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-4"><label class="form-label">Presença</label>
+                            <select class="form-select" name="presenca" id="editarAulaPresenca">
+                                <option value="presente">Presente</option>
+                                <option value="falta">Faltou</option>
+                                <option value="">Não registrar</option>
+                            </select>
+                        </div>
+                        <div class="col-12"><label class="form-label">Observações da aula</label><textarea class="form-control" name="observacao" id="editarAulaObservacao" rows="3"></textarea></div>
+                        <div class="col-12"><label class="form-label">O que estudar</label><textarea class="form-control" name="orientacao_estudo" id="editarAulaOrientacao" rows="3"></textarea></div>
+                    </div>
+                </div>
+                <div class="modal-footer"><button type="submit" class="btn btn-primary">Salvar alterações</button></div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Um único modal para todas as aulas: o botão de cada cartão preenche os campos.
+document.addEventListener('DOMContentLoaded', function () {
+    const modal = new bootstrap.Modal(document.getElementById('editarAulaModal'));
+    const form = document.getElementById('formEditarAula');
+    document.querySelectorAll('.btn-editar-aula').forEach(function (botao) {
+        botao.addEventListener('click', function () {
+            form.action = '/aula/' + botao.dataset.id + '/editar';
+            document.getElementById('editarAulaAluno').textContent = botao.dataset.aluno;
+            document.getElementById('editarAulaObservacao').value = botao.dataset.observacao;
+            document.getElementById('editarAulaOrientacao').value = botao.dataset.orientacao;
+            document.getElementById('editarAulaPresenca').value = botao.dataset.presenca;
+            modal.show();
+        });
+    });
+});
+</script>
 {% endblock %}

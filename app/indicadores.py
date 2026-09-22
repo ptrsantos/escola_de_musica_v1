@@ -12,6 +12,7 @@ seria o caminho definitivo, mas exige alinhar estrutura com o grupo e o Neon.)
 Desempenho: tudo sai de **uma** consulta sobre ``aula`` (com o aluno e o
 instrumento no JOIN) e é agregado em memória — ~1,4 mil linhas, alguns ms.
 """
+import re
 from collections import defaultdict
 
 from sqlalchemy import select
@@ -21,6 +22,8 @@ from app.models import DIAS_SEMANA, Aluno, Aula, Instrumento
 from app.risco import RE_PRESENCA
 
 MARCADOR = {'presente': 'Presença: 1P/0A', 'falta': 'Presença: 0P/1A'}
+# O marcador no começo da observação, com o separador que o segue (ver sem_marcador).
+RE_MARCADOR = re.compile(r'^\s*Presença:\s*\d+P/\d+A\s*(·\s*)?')
 
 
 def contar_presenca(observacao):
@@ -39,6 +42,13 @@ def marcar_presenca(observacao, presenca):
     return f'{marcador} · {observacao}' if observacao else marcador
 
 
+def sem_marcador(observacao):
+    """Observação sem o marcador de presença. Usada ao **editar** uma aula: o
+    formulário mostra só o texto escrito pela professora e o marcador é
+    recolocado na gravação, senão ele se empilharia a cada edição."""
+    return RE_MARCADOR.sub('', (observacao or '').strip(), count=1).strip()
+
+
 def resumo_presenca(aulas):
     """{'aulas', 'presencas', 'faltas', 'taxa'} de um iterável de aulas
     (objetos ``Aula`` ou qualquer coisa com ``.observacao``). ``taxa`` é
@@ -55,7 +65,7 @@ def resumo_presenca(aulas):
             'taxa': presencas / total if total else None}
 
 
-def indicadores_pedagogicos(n_faltosos=10, apenas_ativos=True):
+def indicadores_pedagogicos(n_faltosos=10, apenas_ativos=True, alunos_ids=None):
     """Uma consulta, três indicadores:
 
     - ``faltosos``: os ``n_faltosos`` alunos com mais faltas (desempate pela
@@ -64,11 +74,17 @@ def indicadores_pedagogicos(n_faltosos=10, apenas_ativos=True):
       menor taxa (a pergunta "quais cursos têm os alunos mais presentes");
     - ``por_dia_semana``: aulas e faltas por dia da semana (ocupação da agenda
       possível com os dados de hoje — não há hora nem vagas no cadastro).
+
+    ``alunos_ids`` limita os indicadores a um conjunto de alunos — é o que
+    restringe o painel da professora aos alunos dela. ``None`` = escola inteira;
+    lista vazia = nenhum aluno (os indicadores saem zerados).
     """
     consulta = (select(Aula.data, Aula.observacao, Aluno.id, Aluno.nome, Aluno.status,
                        Instrumento.nome)
                 .join(Aluno, Aluno.id == Aula.aluno_id)
                 .join(Instrumento, Instrumento.id == Aluno.instrumento_id))
+    if alunos_ids is not None:
+        consulta = consulta.where(Aula.aluno_id.in_(alunos_ids))
     linhas = db.session.execute(consulta).all()
 
     por_aluno = {}
@@ -115,16 +131,21 @@ def indicadores_pedagogicos(n_faltosos=10, apenas_ativos=True):
     }
 
 
-def ocupacao_horarios(vagas_por_horario=None):
+def ocupacao_horarios(vagas_por_horario=None, alunos_ids=None):
     """Grade dia da semana x hora com o número de alunos ativos em cada
     horário fixo (``Aluno.dia_aula_semana`` / ``hora_aula``).
 
     ``vagas_por_horario`` (OCUPACAO_CONFIG): quantos alunos a escola atende
     por horário; com ele a grade vira percentual de ocupação, sem ele mostra
     só a contagem (a cor é relativa ao horário mais cheio). Alunos ativos sem
-    dia ou hora entram em ``sem_horario``."""
-    linhas = db.session.execute(
-        select(Aluno.dia_aula_semana, Aluno.hora_aula).where(Aluno.status == 'ativo')).all()
+    dia ou hora entram em ``sem_horario``.
+
+    ``alunos_ids`` limita a grade a um conjunto de alunos (a agenda da
+    professora); ``None`` = escola inteira."""
+    consulta = select(Aluno.dia_aula_semana, Aluno.hora_aula).where(Aluno.status == 'ativo')
+    if alunos_ids is not None:
+        consulta = consulta.where(Aluno.id.in_(alunos_ids))
+    linhas = db.session.execute(consulta).all()
     grade = defaultdict(int)
     sem_horario = 0
     for dia, hora in linhas:

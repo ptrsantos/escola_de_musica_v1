@@ -222,15 +222,30 @@ def test_adicionar_editar_excluir_aluno(dados, app, client):
 
 
 def test_acompanhamento_registra_aula(dados, app, client):
+    """A professora registra aula para um aluno dela (Ana já teve aula com ela)."""
     logar_professora(client)
-    r = client.post('/acompanhamento', data={'aluno_id': dados['carla'],
+    r = client.post('/acompanhamento', data={'aluno_id': dados['ana'],
                                              'observacao': 'Primeira aula', 'orientacao_estudo': 'Escalas'})
     assert r.status_code == 302
     with app.app_context():
-        aula = Aula.query.filter_by(aluno_id=dados['carla']).one()
+        aula = (Aula.query.filter_by(aluno_id=dados['ana'])
+                .order_by(Aula.id.desc()).first())
         assert aula.professora == 'Flávia (Professora)' and aula.data == date.today()
+        assert aula.observacao == 'Primeira aula'
     html = texto(client.get('/acompanhamento'))
     assert 'Primeira aula' in html
+
+
+def test_acompanhamento_nao_registra_aula_de_aluno_de_outra(dados, app, client):
+    """Carla não teve aula com a professora logada: não é aluna dela, e tentar
+    registrar por ela (ou só adivinhar o id) é barrado — senão bastaria um POST
+    para passar a enxergar a ficha de qualquer aluno da escola."""
+    logar_professora(client)
+    r = client.post('/acompanhamento', data={'aluno_id': dados['carla'],
+                                             'observacao': 'Aula de outra'})
+    assert r.status_code == 403
+    with app.app_context():
+        assert Aula.query.filter_by(aluno_id=dados['carla']).count() == 0
 
 
 def test_dashboard_pagina_os_alunos_que_pedem_atencao(app):

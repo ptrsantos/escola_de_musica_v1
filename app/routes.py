@@ -1,3 +1,4 @@
+import re
 from datetime import datetime, date
 from functools import wraps
 
@@ -10,8 +11,8 @@ from app import db
 from app.models import (Usuario, Instrumento, Aluno, Mensalidade, Pagamento, Aula,
                         format_date_for_form, ultimos_meses)
 from app.risco import pontuar
-from app.indicadores import (indicadores_pedagogicos, marcar_presenca, ocupacao_horarios,
-                             resumo_presenca)
+from app.indicadores import (contar_presenca, indicadores_pedagogicos, marcar_presenca,
+                             ocupacao_horarios, resumo_presenca, sem_marcador)
 
 MENSALIDADES_POR_PAGINA = 50
 ATENCAO_POR_PAGINA = 10        # dashboard: "alunos que pedem atenção", 10 por página
@@ -60,6 +61,52 @@ def totais_financeiros():
     previsto = db.session.scalar(select(func.coalesce(func.sum(Mensalidade.valor), 0.0)))
     recebido = db.session.scalar(select(func.coalesce(func.sum(Pagamento.valor), 0.0)))
     return previsto, recebido
+
+
+def nome_de_professora(nome):
+    """Nome comparável de uma professora: sem maiúsculas, sem espaços nas pontas
+    e **sem o rótulo entre parênteses no fim** — 'Flávia (Professora)' no cadastro
+    do usuário e 'Flávia' na aula são a mesma pessoa (é assim nos dados de
+    demonstração). Nos dados importados os dois lados já são iguais ('Docente 7')."""
+    return re.sub(r'\s*\([^)]*\)\s*$', '', (nome or '').strip()).strip().lower()
+
+
+def ids_alunos_da_professora(usuario=None):
+    """Ids dos alunos de uma professora — os alunos para quem ela deu aula.
+
+    O vínculo é o que o modelo tem hoje: ``Aula.aluno_id`` + ``Aula.professora``.
+    Como ``Aula.professora`` é texto livre, sem chave estrangeira para ``Usuario``
+    (defeito nº 9), o casamento é pelo nome. A comparação é feita em Python sobre
+    os nomes distintos de ``aula`` (algumas dezenas) para poder normalizar os dois
+    lados; são duas consultas baratas. Para que toda aula nova case exatamente, o
+    formulário de acompanhamento grava o nome do usuário logado quando quem
+    registra é a professora.
+    """
+    usuario = usuario or current_user
+    alvo = nome_de_professora(usuario.nome)
+    if not alvo:
+        return []
+    nomes = [nome for nome in db.session.scalars(select(Aula.professora).distinct())
+             if nome_de_professora(nome) == alvo]
+    if not nomes:
+        return []
+    return list(db.session.scalars(
+        select(Aula.aluno_id).where(Aula.professora.in_(nomes)).distinct()))
+
+
+def escopo_de_alunos():
+    """Quais alunos o usuário logado pode ver: ``None`` = a escola inteira
+    (gestora); lista de ids = só os alunos dela (professora). Lista vazia é um
+    escopo válido e legítimo: professora que ainda não registrou nenhuma aula."""
+    return ids_alunos_da_professora() if current_user.is_professora else None
+
+
+def pode_ver_aluno(aluno_id, escopo=None):
+    """A professora só enxerga os alunos dela — inclusive digitando a URL."""
+    if not current_user.is_professora:
+        return True
+    escopo = escopo if escopo is not None else ids_alunos_da_professora()
+    return aluno_id in escopo
 
 
 def register_routes(app):
@@ -159,27 +206,29 @@ def register_routes(app):
         if current_user.is_aluno:
             return redirect(url_for('minha_area'))
 
-        atualizar_status_vencidos()
+        # A professora não vê o financeiro da escola (decisão da direção,
+        # 22/09/2026): o painel dela traz os mesmos indicadores pedagógicos e de
+        # risco, porém restritos aos alunos dela. Sem financeiro, também não há
+        # motivo para disparar o UPDATE de mensalidades vencidas.
+        gestora = current_user.is_gestora
+        escopo = escopo_de_alunos()
+        if gestora:
+            atualizar_status_vencidos()
 
         # Os alunos vêm com qtd_em_atraso / valor_em_aberto / ultima_aula já
         # calculados no SELECT (column_property) — risco e inadimplência são
         # aritmética em memória, sem tocar no banco de novo.
-        alunos = (Aluno.query.filter_by(status='ativo')
-                  .options(joinedload(Aluno.instrumento)).all())
+        consulta = Aluno.query.filter_by(status='ativo').options(joinedload(Aluno.instrumento))
+        if escopo is not None:
+            consulta = consulta.filter(Aluno.id.in_(escopo))
+        alunos = consulta.all()
         pontuar(alunos)   # modelo de evasão em lote (3 consultas para todos)
 
-        total_alunos = len(alunos)
-        inadimplentes = sum(1 for a in alunos if a.inadimplente)
-        adimplentes = total_alunos - inadimplentes
-        total_atrasadas = db.session.scalar(
-            select(func.count()).select_from(Mensalidade).where(Mensalidade.status == 'em atraso'))
-
-        total_previsto, total_recebido = totais_financeiros()
-
         # Distribuição de alunos por instrumento (para o gráfico de pizza)
-        por_instrumento = db.session.query(
-            Instrumento.nome, func.count(Aluno.id)
-        ).join(Aluno).group_by(Instrumento.nome).all()
+        q_instrumentos = db.session.query(Instrumento.nome, func.count(Aluno.id)).join(Aluno)
+        if escopo is not None:
+            q_instrumentos = q_instrumentos.filter(Aluno.id.in_(escopo))
+        por_instrumento = q_instrumentos.group_by(Instrumento.nome).all()
         dados_instrumentos = {
             'nomes': [nome for nome, _ in por_instrumento],
             'valores': [qtd for _, qtd in por_instrumento],
@@ -190,69 +239,87 @@ def register_routes(app):
         for a in alunos:
             riscos[a.risco] += 1
 
-        # Recebido nos últimos 6 meses (para o gráfico de linha) — recebido por
-        # mês de referência (competência) da mensalidade, agrupado no banco
-        seis_meses = ultimos_meses(6)
-        recebido_por_mes = dict(db.session.execute(
-            select(Mensalidade.competencia, func.sum(Pagamento.valor))
-            .join(Pagamento, Pagamento.mensalidade_id == Mensalidade.id)
-            .where(Mensalidade.competencia.in_(seis_meses))
-            .group_by(Mensalidade.competencia)
-        ).all())
-        dados_recebido = {
-            'meses': seis_meses,
-            'valores': [round(recebido_por_mes.get(ref, 0.0), 2) for ref in seis_meses],
-        }
-
-        # Alunos que pedem atenção (risco médio ou alto)
-        atencao = sorted(
-            (a for a in alunos if a.risco != 'baixo'),
-            key=lambda a: a.risco_score, reverse=True,
-        )
-
         # Presença: faltosos, por instrumento e por dia da semana (1 consulta)
-        pedagogico = indicadores_pedagogicos(n_faltosos=10)
+        pedagogico = indicadores_pedagogicos(n_faltosos=10, alunos_ids=escopo)
         # Ocupação: alunos ativos por dia x hora da aula (1 consulta)
-        ocupacao = ocupacao_horarios(app.config['OCUPACAO_CONFIG']['vagas_por_horario'])
+        ocupacao = ocupacao_horarios(app.config['OCUPACAO_CONFIG']['vagas_por_horario'],
+                                     alunos_ids=escopo)
 
-        return render_template(
-            'dashboard.html',
-            total_alunos=total_alunos,
-            adimplentes=adimplentes,
-            inadimplentes=inadimplentes,
-            total_atrasadas=total_atrasadas,
-            total_previsto=total_previsto,
-            total_recebido=total_recebido,
+        contexto = dict(
+            total_alunos=len(alunos),
             dados_instrumentos=dados_instrumentos,
             riscos=riscos,
-            dados_recebido=dados_recebido,
-            alunos_atencao=atencao,
-            atencao_por_pagina=ATENCAO_POR_PAGINA,
             faltosos=pedagogico['faltosos'],
             presenca_instrumento=pedagogico['por_instrumento'],
             aulas_dia_semana=pedagogico['por_dia_semana'],
             ocupacao=ocupacao,
         )
 
+        if gestora:
+            inadimplentes = sum(1 for a in alunos if a.inadimplente)
+            total_atrasadas = db.session.scalar(
+                select(func.count()).select_from(Mensalidade)
+                .where(Mensalidade.status == 'em atraso'))
+            total_previsto, total_recebido = totais_financeiros()
+
+            # Recebido nos últimos 6 meses (para o gráfico de linha) — recebido
+            # por mês de referência (competência), agrupado no banco
+            seis_meses = ultimos_meses(6)
+            recebido_por_mes = dict(db.session.execute(
+                select(Mensalidade.competencia, func.sum(Pagamento.valor))
+                .join(Pagamento, Pagamento.mensalidade_id == Mensalidade.id)
+                .where(Mensalidade.competencia.in_(seis_meses))
+                .group_by(Mensalidade.competencia)
+            ).all())
+
+            contexto.update(
+                adimplentes=len(alunos) - inadimplentes,
+                inadimplentes=inadimplentes,
+                total_atrasadas=total_atrasadas,
+                total_previsto=total_previsto,
+                total_recebido=total_recebido,
+                dados_recebido={
+                    'meses': seis_meses,
+                    'valores': [round(recebido_por_mes.get(ref, 0.0), 2) for ref in seis_meses],
+                },
+                # Alunos que pedem atenção (risco médio ou alto) — traz situação
+                # financeira e motivos de pagamento, então é só da gestora.
+                alunos_atencao=sorted((a for a in alunos if a.risco != 'baixo'),
+                                      key=lambda a: a.risco_score, reverse=True),
+                atencao_por_pagina=ATENCAO_POR_PAGINA,
+            )
+
+        return render_template('dashboard.html', **contexto)
+
     @app.route('/api/dashboard-data')
     @papeis_required('gestora', 'professora')
     def dashboard_data():
-        atualizar_status_vencidos()
-        alunos = Aluno.query.filter_by(status='ativo').all()
+        gestora = current_user.is_gestora
+        escopo = escopo_de_alunos()
+        if gestora:
+            atualizar_status_vencidos()
+
+        consulta = Aluno.query.filter_by(status='ativo')
+        q_instrumentos = db.session.query(Instrumento.nome, func.count(Aluno.id)).join(Aluno)
+        if escopo is not None:
+            consulta = consulta.filter(Aluno.id.in_(escopo))
+            q_instrumentos = q_instrumentos.filter(Aluno.id.in_(escopo))
+
+        alunos = consulta.all()
         pontuar(alunos)
         riscos = {'baixo': 0, 'médio': 0, 'alto': 0}
         for a in alunos:
             riscos[a.risco] += 1
-        inadimplentes = sum(1 for a in alunos if a.inadimplente)
-        por_instrumento = db.session.query(
-            Instrumento.nome, func.count(Aluno.id)
-        ).join(Aluno).group_by(Instrumento.nome).all()
-        return jsonify({
+
+        dados = {
             'risco': riscos,
-            'financeiro': {'Adimplentes': len(alunos) - inadimplentes,
-                           'Inadimplentes': inadimplentes},
-            'instrumentos': dict(por_instrumento),
-        })
+            'instrumentos': dict(q_instrumentos.group_by(Instrumento.nome).all()),
+        }
+        if gestora:   # inadimplência é da escola: fora da resposta da professora
+            inadimplentes = sum(1 for a in alunos if a.inadimplente)
+            dados['financeiro'] = {'Adimplentes': len(alunos) - inadimplentes,
+                                   'Inadimplentes': inadimplentes}
+        return jsonify(dados)
 
     # =================================================================
     # Alunos (equivalente às "transações"/"categorias" do original)
@@ -260,9 +327,13 @@ def register_routes(app):
     @app.route('/alunos')
     @papeis_required('gestora', 'professora')
     def alunos():
-        atualizar_status_vencidos()
+        escopo = escopo_de_alunos()
+        if escopo is None:
+            atualizar_status_vencidos()
         busca = (request.args.get('busca') or '').strip()
         consulta = Aluno.query.options(joinedload(Aluno.instrumento)).order_by(Aluno.nome)
+        if escopo is not None:                 # professora: só os alunos dela
+            consulta = consulta.filter(Aluno.id.in_(escopo))
         if busca:
             consulta = consulta.filter(Aluno.nome.ilike(f'%{busca}%'))
         alunos = consulta.all()
@@ -303,13 +374,17 @@ def register_routes(app):
     @app.route('/aluno/<int:id>')
     @login_required
     def aluno_detalhe(id):
-        atualizar_status_vencidos()
+        if not current_user.is_professora:
+            atualizar_status_vencidos()
         aluno = db.get_or_404(Aluno, id)
         # Aluno só acessa a própria ficha
         if current_user.is_aluno:
             vinculo = Aluno.query.filter_by(email=current_user.email).first()
             if not vinculo or vinculo.id != aluno.id:
                 abort(403)
+        # Professora só acessa a ficha dos alunos dela — inclusive pela URL
+        if not pode_ver_aluno(aluno.id):
+            abort(403)
         instrumentos = Instrumento.query.order_by(Instrumento.nome).all()
         return render_template('aluno_detalhe.html', aluno=aluno, instrumentos=instrumentos,
                                presenca=resumo_presenca(aluno.aulas))
@@ -421,10 +496,17 @@ def register_routes(app):
     @app.route('/acompanhamento', methods=['GET', 'POST'])
     @papeis_required('gestora', 'professora')
     def acompanhamento():
+        escopo = escopo_de_alunos()
         if request.method == 'POST':
+            aluno_id = int(request.form['aluno_id'])
+            if not pode_ver_aluno(aluno_id, escopo):
+                abort(403)
             aula = Aula(
-                aluno_id=int(request.form['aluno_id']),
-                professora=request.form.get('professora') or current_user.nome,
+                aluno_id=aluno_id,
+                # A professora não escolhe o nome: é o dela que fica gravado, e é
+                # esse texto que liga a aula a ela (ver ids_alunos_da_professora).
+                professora=(current_user.nome if current_user.is_professora
+                            else (request.form.get('professora') or current_user.nome)),
                 data=parse_date(request.form.get('data')) or date.today(),
                 # Presente/Faltou vira o marcador "Presença: nP/mA" na observação —
                 # o mesmo que o importador grava; é o que alimenta os indicadores.
@@ -436,15 +518,44 @@ def register_routes(app):
             db.session.commit()
             flash('Acompanhamento pedagógico registrado com sucesso!', 'success')
             return redirect(url_for('acompanhamento'))
+
+        # selectinload: os alunos distintos vêm numa 2ª consulta, em vez de
+        # repetir as colunas calculadas do aluno em cada uma das ~1.400 aulas
+        consulta_aulas = Aula.query.options(selectinload(Aula.aluno)).order_by(Aula.data.desc())
+        consulta_alunos = Aluno.query.filter_by(status='ativo').order_by(Aluno.nome)
+        if escopo is not None:                 # professora: só os alunos dela
+            consulta_aulas = consulta_aulas.filter(Aula.aluno_id.in_(escopo))
+            consulta_alunos = consulta_alunos.filter(Aluno.id.in_(escopo))
         return render_template(
             'acompanhamento.html',
-            # selectinload: os alunos distintos vêm numa 2ª consulta, em vez de
-            # repetir as colunas calculadas do aluno em cada uma das ~1.400 aulas
-            aulas=(Aula.query.options(selectinload(Aula.aluno))
-                   .order_by(Aula.data.desc()).all()),
-            alunos=Aluno.query.filter_by(status='ativo').order_by(Aluno.nome).all(),
+            aulas=consulta_aulas.all(),
+            alunos=consulta_alunos.all(),
             hoje=format_date_for_form(date.today()),
+            # o formulário de edição mostra o texto sem o marcador de presença
+            sem_marcador=sem_marcador,
+            contar_presenca=contar_presenca,
         )
+
+    @app.route('/aula/<int:id>/editar', methods=['POST'])
+    @papeis_required('gestora', 'professora')
+    def editar_aula(id):
+        """Edita a observação, a presença e a orientação de estudo de uma aula
+        já registrada — o "estudos da semana" que a professora revisa depois."""
+        aula = db.get_or_404(Aula, id)
+        if not pode_ver_aluno(aula.aluno_id):
+            abort(403)
+        if 'presenca' in request.form:
+            # O formulário sempre manda o campo: vazio ("Não registrar") apaga a
+            # marcação de propósito. Sem o campo, preserva a que a aula já tinha.
+            presenca = request.form['presenca']
+        else:
+            presentes, faltas = contar_presenca(aula.observacao)
+            presenca = 'presente' if presentes else 'falta' if faltas else ''
+        aula.observacao = marcar_presenca(request.form.get('observacao'), presenca)
+        aula.orientacao_estudo = request.form.get('orientacao_estudo')
+        db.session.commit()
+        flash('Acompanhamento atualizado com sucesso!', 'success')
+        return redirect(request.form.get('voltar') or url_for('acompanhamento'))
 
     # =================================================================
     # Área do aluno (consulta apenas dos próprios dados)
