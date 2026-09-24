@@ -59,12 +59,15 @@ def test_anonimo_vai_para_login(dados, client):
 
 def test_aluno_so_ve_a_propria_area(dados, client):
     logar_aluno(client)
-    r = client.get('/dashboard')
-    assert r.status_code == 302 and r.headers['Location'].endswith('/minha-area')
+    r = client.get('/dashboard')                  # painel do aluno (test_painel_aluno.py)
+    assert r.status_code == 200 and 'Meu painel' in texto(r)
     r = client.get('/minha-area')
     assert r.status_code == 200 and 'Adimplente' in texto(r)
-    assert client.get(f'/aluno/{dados["ana"]}').status_code == 200
-    assert client.get(f'/aluno/{dados["bruno"]}').status_code == 403
+    # A ficha (com o risco de evasão) é da escola: o aluno vai para o painel,
+    # seja a própria ficha, seja a de outro aluno.
+    for ficha in (dados['ana'], dados['bruno'], 99999):
+        r = client.get(f'/aluno/{ficha}')
+        assert r.status_code == 302 and r.headers['Location'].endswith('/dashboard')
     assert client.get('/alunos').status_code == 302
     assert client.get('/financeiro').status_code == 302
 

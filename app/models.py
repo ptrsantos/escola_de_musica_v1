@@ -87,11 +87,6 @@ class Aluno(db.Model):
     dia_aula_semana = db.Column(db.Integer, nullable=True)
     hora_aula = db.Column(db.Time, nullable=True)
 
-    # Horário de aula recorrente (semanal). Convenção weekday(): segunda=0..domingo=6.
-    # NULL = aluno sem horário fixo definido.
-    dia_aula_semana = db.Column(db.Integer, nullable=True)
-    hora_aula = db.Column(db.Time, nullable=True)
-
     mensalidades = db.relationship('Mensalidade', backref='aluno', lazy=True,
                                    cascade='all, delete-orphan')
     aulas = db.relationship('Aula', backref='aluno', lazy=True,

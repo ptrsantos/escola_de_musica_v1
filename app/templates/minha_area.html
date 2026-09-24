@@ -9,12 +9,13 @@
 </div>
 
 {% if aluno %}
+{% set visual = aluno.instrumento.nome|visual_instrumento %}
 <div class="row g-4 mb-4">
     <div class="col-md-4">
-        <div class="card card-metric shadow-sm h-100">
+        <div class="card card-metric shadow-sm h-100" style="background: {{ visual.fundo }}; border: 1px solid {{ visual.cor }}40;">
             <div class="card-body text-center">
-                <div class="text-primary mb-2"><i class="fas fa-music fa-2x"></i></div>
-                <h5>{{ aluno.instrumento.nome }}</h5>
+                <div class="mb-2" style="font-size: 2.5rem; line-height: 1;" aria-hidden="true">{{ visual.emoji }}</div>
+                <h5 style="color: {{ visual.cor }};">{{ aluno.instrumento.nome }}</h5>
                 {% if aluno.inadimplente %}
                 <span class="badge text-bg-danger">Inadimplente · R$ {{ aluno.valor_em_aberto|moeda }} em aberto</span>
                 {% else %}

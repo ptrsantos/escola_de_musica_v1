@@ -14,7 +14,8 @@ from app.models import (Usuario, Instrumento, Aluno, Mensalidade, Pagamento, Aul
                         aniversariantes_do_mes, balanco_entradas)
 from app.risco import pontuar
 from app.indicadores import (contar_presenca, indicadores_pedagogicos, marcar_presenca,
-                             ocupacao_horarios, resumo_presenca, sem_marcador)
+                             ocupacao_horarios, painel_do_aluno, resumo_presenca,
+                             sem_marcador)
 
 MENSALIDADES_POR_PAGINA = 50
 ATENCAO_POR_PAGINA = 10        # dashboard: "alunos que pedem atenção", 10 por página
@@ -243,7 +244,7 @@ def register_routes(app):
     @login_required
     def dashboard():
         if current_user.is_aluno:
-            return redirect(url_for('minha_area'))
+            return painel_aluno()
 
         # A professora não vê o financeiro da escola (decisão da direção,
         # 22/09/2026): o painel dela traz os mesmos indicadores pedagógicos e de
@@ -330,6 +331,18 @@ def register_routes(app):
 
         return render_template('dashboard.html', **contexto)
 
+    def painel_aluno():
+        """Aba Dashboard do aluno (pedido da direção, 22/09/2026: a aba levava
+        direto à Minha Área). Resumo visual — presença, próxima aula, o que
+        estudar, mensalidades; as listas completas continuam na Minha Área."""
+        atualizar_status_vencidos()
+        aluno = (Aluno.query.options(joinedload(Aluno.instrumento))
+                 .filter_by(email=current_user.email).first())
+        if not aluno:
+            return redirect(url_for('minha_area'))   # lá aparece o aviso de cadastro não vinculado
+        return render_template('dashboard_aluno.html', aluno=aluno,
+                               painel=painel_do_aluno(aluno))
+
     @app.route('/api/dashboard-data')
     @papeis_required('gestora', 'professora')
     def dashboard_data():
@@ -413,14 +426,14 @@ def register_routes(app):
     @app.route('/aluno/<int:id>')
     @login_required
     def aluno_detalhe(id):
+        # A ficha é tela da escola: traz o risco de evasão (score e fatores).
+        # O aluno vai para o painel dele, que resume o que é dele sem o risco
+        # (decisão do Flávio, 24/09/2026) — antes via a própria ficha pela URL.
+        if current_user.is_aluno:
+            return redirect(url_for('dashboard'))
         if not current_user.is_professora:
             atualizar_status_vencidos()
         aluno = db.get_or_404(Aluno, id)
-        # Aluno só acessa a própria ficha
-        if current_user.is_aluno:
-            vinculo = Aluno.query.filter_by(email=current_user.email).first()
-            if not vinculo or vinculo.id != aluno.id:
-                abort(403)
         # Professora só acessa a ficha dos alunos dela — inclusive pela URL
         if not pode_ver_aluno(aluno.id):
             abort(403)

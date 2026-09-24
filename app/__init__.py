@@ -1,4 +1,5 @@
 import os
+import unicodedata
 from flask import Flask, flash, redirect, request, url_for
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
@@ -43,6 +44,33 @@ RISK_CONFIG = {
 OCUPACAO_CONFIG = {
     'vagas_por_horario': None,
 }
+
+# Identidade visual por instrumento na área do aluno (pedido da direção,
+# 22/09/2026: "aluno de piano = foto de piano"). Emoji em vez de foto: não
+# depende de imagem baixada nem de licença. A Flauta usa 🎶 porque o emoji de
+# flauta (🪈, Unicode 15) não aparece no Windows 10. A chave é o nome sem
+# acento e em minúsculas; instrumento cadastrado depois cai no padrão.
+INSTRUMENTO_VISUAL = {
+    'violao':   {'emoji': '🎸', 'cor': '#7A4A1E', 'fundo': '#F5EBDD'},
+    'piano':    {'emoji': '🎹', 'cor': '#212529', 'fundo': '#ECEEF1'},
+    'teclado':  {'emoji': '🎹', 'cor': '#5A32A3', 'fundo': '#EFE8FA'},
+    'canto':    {'emoji': '🎤', 'cor': '#A61E61', 'fundo': '#FBE7F1'},
+    'bateria':  {'emoji': '🥁', 'cor': '#B02A37', 'fundo': '#FBE9EB'},
+    'guitarra': {'emoji': '🎸', 'cor': '#B35300', 'fundo': '#FFF0E0'},
+    'baixo':    {'emoji': '🎸', 'cor': '#0A58CA', 'fundo': '#E7F0FE'},
+    'saxofone': {'emoji': '🎷', 'cor': '#8A6508', 'fundo': '#FBF3DC'},
+    'violino':  {'emoji': '🎻', 'cor': '#0F766E', 'fundo': '#E0F2F1'},
+    'flauta':   {'emoji': '🎶', 'cor': '#146C43', 'fundo': '#E6F4EC'},
+}
+INSTRUMENTO_VISUAL_PADRAO = {'emoji': '🎵', 'cor': '#495057', 'fundo': '#F1F3F5'}
+
+
+def visual_de_instrumento(nome):
+    """{'emoji', 'cor', 'fundo'} do instrumento, casando pelo nome sem acento
+    e sem maiúsculas ('Violão' = 'violao')."""
+    chave = unicodedata.normalize('NFKD', (nome or '').strip().lower())
+    chave = ''.join(c for c in chave if not unicodedata.combining(c))
+    return INSTRUMENTO_VISUAL.get(chave, INSTRUMENTO_VISUAL_PADRAO)
 
 
 def _resolver_database_uri():
@@ -127,6 +155,9 @@ def create_app(config=None):
         # Formata no padrão en-US (1,234.50) e troca os separadores para pt-BR.
         formatado = f'{valor:,.2f}'
         return formatado.replace(',', 'X').replace('.', ',').replace('X', '.')
+
+    # Cor e emoji do instrumento (área do aluno): {{ nome|visual_instrumento }}
+    app.add_template_filter(visual_de_instrumento, 'visual_instrumento')
 
     # Importar modelos após criar db para evitar importações circulares
     from app.models import Usuario, Instrumento, Aluno, Mensalidade, Pagamento, Aula
