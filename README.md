@@ -189,7 +189,7 @@ traz os dois arquivos necessários:
 | `vercel.json` | build `@vercel/python` a partir de `api/index.py` e rota `/(.*)` para ele |
 | `.vercelignore` | mantém fora do pacote o `.venv/`, o `instance/` e os `*.db` locais |
 
-Não há build de front-end nem pasta `static/` — Bootstrap e Chart.js vêm de CDN.
+Não há build de front-end — Bootstrap e Chart.js vêm de CDN; `app/static/` guarda só o logo.
 O `requirements.txt` instalado em produção **não tem pandas nem scikit-learn**: o
 modelo viaja como `app/modelo_evasao.json`, dentro do pacote `app/`, e é pontuado
 em Python puro por `app/risco.py`.
