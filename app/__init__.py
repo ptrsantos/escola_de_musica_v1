@@ -34,7 +34,7 @@ RISK_CONFIG = {
     'peso_por_atraso': 25,        # cada mensalidade vencida em aberto
     'peso_sem_aula_recente': 15,  # sem acompanhamento pedagógico recente
     'dias_aula_recente': 60,      # janela para considerar a aula "recente"
-    'limiar_medio': 20,           # score >= => risco médio
+    'limiar_medio': 35,           # score >= => risco médio (era 20 até 24/09/2026)
     'limiar_alto': 50,            # score >= => risco alto
 }
 
