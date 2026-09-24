@@ -230,6 +230,41 @@ def register_routes(app):
             flash('Email ou senha inválidos.', 'danger')
         return render_template('login.html')
 
+    @app.route('/alterar-senha', methods=['GET', 'POST'])
+    def alterar_senha():
+        """Troca de senha a partir da tela de login. Sem envio de e-mail no
+        sistema, quem troca prova que é o dono da conta com a senha atual; quem
+        a esqueceu pede à gestora (tela Usuários). A mensagem de erro é a mesma
+        para e-mail inexistente e senha errada, para não revelar quem tem conta."""
+        email = (request.form.get('email') or
+                 (current_user.email if current_user.is_authenticated else '')).strip().lower()
+        if request.method == 'POST':
+            atual = request.form.get('senha_atual') or ''
+            nova = request.form.get('nova_senha') or ''
+            confirmacao = request.form.get('confirmar_senha') or ''
+            usuario = Usuario.query.filter_by(email=email).first() if email else None
+            erro = None
+            if not (email and atual and nova and confirmacao):
+                erro = 'Preencha todos os campos.'
+            elif not usuario or not usuario.verificar_senha(atual):
+                erro = 'E-mail ou senha atual inválidos.'
+            elif len(nova) < 6:
+                erro = 'A nova senha precisa ter pelo menos 6 caracteres.'
+            elif nova != confirmacao:
+                erro = 'A confirmação não confere com a nova senha.'
+            elif nova == atual:
+                erro = 'A nova senha precisa ser diferente da atual.'
+            if erro:
+                flash(erro, 'danger')
+                return render_template('alterar_senha.html', email=email)
+            usuario.set_senha(nova)
+            db.session.commit()
+            flash('Senha alterada. Entre com a nova senha.', 'success')
+            if current_user.is_authenticated and current_user.id == usuario.id:
+                logout_user()
+            return redirect(url_for('login'))
+        return render_template('alterar_senha.html', email=email)
+
     @app.route('/logout')
     @login_required
     def logout():
