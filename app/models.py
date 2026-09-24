@@ -216,7 +216,9 @@ class Mensalidade(db.Model):
 
     def atualizar_status(self, hoje=None):
         hoje = hoje or date.today()
-        if self.total_pago() >= self.valor:
+        # Comparação em centavos: com dinheiro em float (defeito nº 4),
+        # 100,10 + 150,20 dá 250,2999… e a mensalidade de 250,30 não quitava.
+        if round(self.total_pago(), 2) >= round(self.valor, 2):
             self.status = 'pago'
         elif self.vencimento < hoje:
             self.status = 'em atraso'

@@ -78,6 +78,12 @@ def test_logout(dados, client):
     assert client.get('/dashboard').status_code == 302
 
 
+def test_chartjs_carregado_uma_vez_so(dados, client):
+    """Defeito nº 7: o dashboard pedia uma segunda cópia do Chart.js."""
+    logar_gestora(client)
+    assert texto(client.get('/dashboard')).count('npm/chart.js') == 1
+
+
 # ---------------------------------------------------------------------------
 # Conteúdo — dashboard, relatórios, financeiro, alunos
 # ---------------------------------------------------------------------------
@@ -192,6 +198,35 @@ def test_registrar_pagamento_parcial(dados, app, client):
         assert m.status == 'em atraso' and m.valor_pago == 80.0
     html = texto(client.get('/relatorios'))
     assert 'R$ 200,00' in html   # Carla: 280 - 80
+
+
+def test_pagamento_em_partes_quita_sem_erro_de_centavo(dados, app, client):
+    """Defeito nº 4 (dinheiro em float): 100,10 + 150,20 = 250,2999… e a
+    mensalidade de 250,30 continuava em atraso. A comparação é em centavos e o
+    saldo padrão vai arredondado."""
+    with app.app_context():
+        m = Mensalidade.query.filter_by(aluno_id=dados['carla'], status='em atraso').first()
+        m.valor = 250.30
+        db.session.commit()
+        m_id = m.id
+    logar_gestora(client)
+    client.post(f'/registrar_pagamento/{m_id}', data={'valor': '100.10'})
+    client.post(f'/registrar_pagamento/{m_id}', data={'valor': '150.20'})
+    with app.app_context():
+        assert db.session.get(Mensalidade, m_id).status == 'pago'
+
+    with app.app_context():
+        m = Mensalidade.query.filter_by(aluno_id=dados['bruno'], status='em atraso').first()
+        m.valor = 250.30
+        m.pagamentos.append(Pagamento(valor=100.10, data_pagamento=date.today()))
+        db.session.commit()
+        m_id = m.id
+    html = texto(client.get('/financeiro?status=em+atraso'))
+    assert 'name="valor" value="150.20"' in html          # saldo em centavos, sem 150.2000…
+    client.post(f'/registrar_pagamento/{m_id}', data={})  # sem valor: paga o saldo
+    with app.app_context():
+        m = db.session.get(Mensalidade, m_id)
+        assert m.status == 'pago' and m.pagamentos[-1].valor == 150.20
 
 
 def test_adicionar_mensalidade(dados, app, client):

@@ -559,7 +559,8 @@ def register_routes(app):
     @papeis_required('gestora')
     def registrar_pagamento(id):
         m = db.get_or_404(Mensalidade, id)
-        valor = float(request.form.get('valor') or (m.valor - m.total_pago()))
+        # Centavos exatos: o valor padrão (saldo) sai de uma subtração em float.
+        valor = round(float(request.form.get('valor') or (m.valor - m.total_pago())), 2)
         # Anexar à coleção (e não só gravar por mensalidade_id) garante que
         # atualizar_status() enxergue o pagamento recém-criado.
         m.pagamentos.append(Pagamento(
@@ -577,7 +578,7 @@ def register_routes(app):
     def editar_pagamento(id):
         p = db.get_or_404(Pagamento, id)
         try:
-            p.valor = float(request.form['valor'])
+            p.valor = round(float(request.form['valor']), 2)
             p.data_pagamento = parse_date(request.form.get('data_pagamento')) or p.data_pagamento
             p.observacao = request.form.get('observacao')
             p.mensalidade.atualizar_status()

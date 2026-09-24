@@ -90,6 +90,13 @@ def _resolver_database_uri():
         database_url = database_url.strip()
 
     if not database_url:
+        # No Vercel (que define VERCEL=1) o disco é somente leitura e efêmero:
+        # cair no SQLite faria os dados sumirem sem erro visível (defeito nº 10).
+        # Melhor não subir e dizer o que falta.
+        if os.getenv('VERCEL'):
+            raise RuntimeError('DATABASE_URL não está definida no ambiente do Vercel: '
+                               'configure a URL do Postgres (Neon, com ?sslmode=require) '
+                               'em Settings > Environment Variables.')
         # Ambiente local: SQLite dentro da pasta instance/
         return 'sqlite:///escola_musica.db'
 

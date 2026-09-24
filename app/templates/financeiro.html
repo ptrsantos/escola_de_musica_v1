@@ -56,7 +56,7 @@
                             {% if m.status != 'pago' %}
                             <form class="d-flex gap-1" method="POST" action="{{ url_for('registrar_pagamento', id=m.id) }}">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                <input type="hidden" name="valor" value="{{ m.valor - m.valor_pago }}">
+                                <input type="hidden" name="valor" value="{{ '%.2f'|format(m.valor - m.valor_pago) }}">
                                 <input class="form-control form-control-sm" type="date" name="data_pagamento" value="{{ hoje }}">
                                 <button class="btn btn-sm btn-success" title="Registrar quitação"><i class="fas fa-check"></i></button>
                             </form>

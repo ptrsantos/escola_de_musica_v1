@@ -162,3 +162,22 @@ def test_todo_formulario_post_tem_token_csrf():
                 linha = conteudo[:m.start()].count(chr(10)) + 1
                 sem_token.append(f'{nome}:{linha}')
     assert not sem_token, 'formulários POST sem csrf_token: ' + ', '.join(sem_token)
+
+
+# ---------------------------------------------------------------------------
+# Banco de produção (defeito nº 10)
+# ---------------------------------------------------------------------------
+def test_sem_database_url_no_vercel_nao_sobe(monkeypatch):
+    """No Vercel, sem DATABASE_URL, o app caía no SQLite de um disco efêmero e
+    os dados sumiam sem erro. Agora não sobe e diz o que falta."""
+    import pytest
+    from app import _resolver_database_uri
+    monkeypatch.delenv('DATABASE_URL', raising=False)
+    monkeypatch.setenv('VERCEL', '1')
+    with pytest.raises(RuntimeError, match='DATABASE_URL'):
+        _resolver_database_uri()
+    monkeypatch.setenv('DATABASE_URL', 'postgres://u:s@host/db?sslmode=require')
+    assert _resolver_database_uri() == 'postgresql://u:s@host/db?sslmode=require'
+    monkeypatch.delenv('DATABASE_URL')
+    monkeypatch.delenv('VERCEL')
+    assert _resolver_database_uri() == 'sqlite:///escola_musica.db'     # local segue igual
