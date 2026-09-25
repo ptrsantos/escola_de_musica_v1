@@ -1,0 +1,150 @@
+{% extends 'base.html' %}
+
+{% block title %}Meu painel{% endblock %}
+
+{% block content %}
+{# Painel do aluno (pedido da direção, 22/09/2026): resumo de uma olhada. As
+   listas completas de aulas e mensalidades ficam na Minha Área. O risco de
+   evasão não aparece aqui — é ferramenta da escola, não do aluno. #}
+{% set visual = aluno.instrumento.nome|visual_instrumento %}
+{% set p = painel %}
+<style>
+    .painel-cabecalho { border-radius: 12px; }
+    .painel-emoji {
+        width: 64px; height: 64px; flex: 0 0 64px; border-radius: 50%;
+        background: #fff; font-size: 2.2rem; line-height: 1;
+        display: flex; align-items: center; justify-content: center;
+    }
+    .painel-metrica .rotulo { font-size: 0.85rem; color: #6c757d; }
+    .painel-metrica .valor { font-size: 1.6rem; font-weight: 600; line-height: 1.2; }
+    .painel-metrica .detalhe { font-size: 0.8rem; color: #6c757d; }
+    .painel-texto { white-space: pre-line; }
+</style>
+
+<div class="painel-cabecalho d-flex align-items-center gap-3 p-3 p-md-4 mb-4"
+     style="background: {{ visual.fundo }}; border: 1px solid {{ visual.cor }}40; color: {{ visual.cor }};">
+    <div class="painel-emoji" aria-hidden="true">{{ visual.emoji }}</div>
+    <div>
+        <h2 class="mb-1" style="color: {{ visual.cor }};">Olá, {{ current_user.nome }}</h2>
+        <div>
+            <strong>{{ aluno.instrumento.nome }}</strong>
+            {% if aluno.horario_aula %} · aula fixa: {{ aluno.horario_aula }}{% endif %}
+            {% if p.professora %} · professora {{ p.professora }}{% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3">
+        <div class="card shadow-sm border-0 h-100 painel-metrica"><div class="card-body">
+            <div class="rotulo"><i class="fas fa-user-check me-1"></i>Presença em {{ p.ano }}</div>
+            {% if p.presenca.taxa is not none %}
+            {% set taxa = p.presenca.taxa %}
+            <div class="valor {{ 'text-success' if taxa >= 0.75 else ('text-warning' if taxa >= 0.5 else 'text-danger') }}">{{ '%.0f'|format(taxa * 100) }}%</div>
+            <div class="detalhe">{{ p.presenca.presencas }} presença{{ 's' if p.presenca.presencas != 1 }} · {{ p.presenca.faltas }} falta{{ 's' if p.presenca.faltas != 1 }}</div>
+            {% else %}
+            <div class="valor text-muted">—</div>
+            <div class="detalhe">nenhuma presença registrada no ano</div>
+            {% endif %}
+        </div></div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="card shadow-sm border-0 h-100 painel-metrica"><div class="card-body">
+            <div class="rotulo"><i class="fas fa-calendar-day me-1"></i>Próxima aula</div>
+            {% if p.proxima_aula %}
+            <div class="valor">{{ p.proxima_aula_rotulo }}</div>
+            <div class="detalhe">{{ 'às ' ~ aluno.hora_aula.strftime('%H:%M') if aluno.hora_aula else 'horário a combinar' }}</div>
+            {% else %}
+            <div class="valor text-muted">—</div>
+            <div class="detalhe">sem horário fixo cadastrado</div>
+            {% endif %}
+        </div></div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="card shadow-sm border-0 h-100 painel-metrica"><div class="card-body">
+            <div class="rotulo"><i class="fas fa-music me-1"></i>Última aula</div>
+            {% if p.ultima_aula %}
+            <div class="valor">{{ p.ultima_aula.data.strftime('%d/%m') }}</div>
+            <div class="detalhe">{{ p.ultima_aula.presenca }}</div>
+            {% else %}
+            <div class="valor text-muted">—</div>
+            <div class="detalhe">nenhuma aula registrada</div>
+            {% endif %}
+        </div></div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="card shadow-sm border-0 h-100 painel-metrica"><div class="card-body">
+            <div class="rotulo"><i class="fas fa-wallet me-1"></i>Mensalidades</div>
+            {% set m = p.mensalidades %}
+            {% if m.em_atraso %}
+            <div class="valor text-danger">{{ m.em_atraso }} em atraso</div>
+            <div class="detalhe">R$ {{ m.valor_em_aberto|moeda }} em aberto</div>
+            {% else %}
+            <div class="valor text-success">Em dia</div>
+            <div class="detalhe">{% if m.proxima %}próxima vence {{ m.proxima.vencimento.strftime('%d/%m') }} · R$ {{ m.proxima.valor|moeda }}{% else %}nenhuma pendente{% endif %}</div>
+            {% endif %}
+        </div></div>
+    </div>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-lg-7">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-header bg-white"><h5 class="mb-0">Aulas por mês</h5></div>
+            <div class="card-body">
+                {% if p.aulas_por_mes.total %}
+                <div style="position: relative; height: 240px;"><canvas id="aulasMesChart"></canvas></div>
+                {% else %}
+                <p class="text-muted text-center py-4 mb-0">Nenhuma aula registrada nos últimos 6 meses.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-5">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-header bg-white"><h5 class="mb-0"><i class="fas fa-book-open me-2" style="color: {{ visual.cor }};"></i>Para estudar</h5></div>
+            <div class="card-body">
+                {% if p.para_estudar %}
+                <div class="text-muted small mb-2">Aula de {{ p.para_estudar.data.strftime('%d/%m/%Y') }} · {{ p.para_estudar.professora }}</div>
+                <p class="painel-texto">{{ p.para_estudar.orientacao }}</p>
+                {% if p.para_estudar.observacao %}
+                <div class="text-muted small mb-1">Observação da professora</div>
+                <p class="painel-texto text-secondary mb-0">{{ p.para_estudar.observacao }}</p>
+                {% endif %}
+                {% else %}
+                <p class="text-muted mb-0">Sua professora ainda não registrou orientações de estudo.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<p class="text-muted small mb-0">O histórico completo de aulas e mensalidades está na
+    <a href="{{ url_for('minha_area') }}" onclick="mostrarSpinner()">Minha Área</a>.</p>
+{% endblock %}
+
+{% block scripts %}
+{% if painel.aulas_por_mes.total %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const d = {{ painel.aulas_por_mes|tojson }};
+    new Chart(document.getElementById('aulasMesChart').getContext('2d'), {
+        type: 'bar',
+        data: {
+            labels: d.rotulos,
+            datasets: [
+                { label: 'Presenças', data: d.presencas, backgroundColor: 'rgba(25, 135, 84, 0.75)' },
+                { label: 'Faltas', data: d.faltas, backgroundColor: 'rgba(220, 53, 69, 0.7)' },
+                { label: 'Aula sem presença registrada', data: d.sem_registro, backgroundColor: 'rgba(173, 181, 189, 0.6)' }
+            ]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom' } },
+            scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { precision: 0 } } }
+        }
+    });
+});
+</script>
+{% endif %}
+{% endblock %}

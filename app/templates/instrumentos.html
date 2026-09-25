@@ -44,7 +44,7 @@
 <div class="modal fade" id="novoInstrumentoModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
-            <form method="POST" action="{{ url_for('adicionar_instrumento') }}">
+            <form method="POST" action="{{ url_for('adicionar_instrumento') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="modal-header"><h5 class="modal-title">Novo instrumento</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                 <div class="modal-body">
                     <div class="mb-3"><label class="form-label">Nome *</label><input type="text" class="form-control" name="nome" required></div>
@@ -59,7 +59,7 @@
 <div class="modal fade" id="editarInstrumentoModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
-            <form method="POST" id="form-editar-instrumento">
+            <form method="POST" id="form-editar-instrumento"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="modal-header"><h5 class="modal-title">Editar instrumento</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                 <div class="modal-body">
                     <div class="mb-3"><label class="form-label">Nome *</label><input type="text" class="form-control" name="nome" id="edit-i-nome" required></div>
@@ -81,7 +81,7 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <form id="form-excluir-instrumento" method="POST"><button type="submit" class="btn btn-danger">Excluir</button></form>
+                <form id="form-excluir-instrumento" method="POST"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn btn-danger">Excluir</button></form>
             </div>
         </div>
     </div>

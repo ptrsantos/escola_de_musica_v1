@@ -9,11 +9,14 @@
     .metric-icon { opacity: 0.7; }
 </style>
 
+{# A professora vê os mesmos indicadores da gestora, porém só dos alunos dela
+   e sem nada do financeiro da escola (decisão da direção, 22/09/2026). #}
+{% set gestora = current_user.papel == 'gestora' %}
 <div class="container-fluid dashboard-container">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
-            <h2 class="mb-0">Painel Gerencial</h2>
-            <p class="text-muted mb-0">Acompanhe alunos, recebimentos e o risco de evasão.</p>
+            <h2 class="mb-0">{{ 'Painel Gerencial' if gestora else 'Meu Painel' }}</h2>
+            <p class="text-muted mb-0">{% if gestora %}Acompanhe alunos, recebimentos e o risco de evasão.{% else %}Seus alunos: presença, horários e risco de evasão.{% endif %}</p>
         </div>
         {% if current_user.papel == 'gestora' %}
         <a href="{{ url_for('alunos') }}" class="btn btn-primary" onclick="mostrarSpinner()"><i class="fas fa-plus me-1"></i>Novo aluno</a>
@@ -22,15 +25,16 @@
 
     <!-- Métricas principais -->
     <div class="row g-4 mb-4">
-        <div class="col-md-3">
+        <div class="{{ 'col-md-3' if gestora else 'col-md-4' }}">
             <div class="card card-metric shadow-sm">
                 <div class="card-body text-center">
                     <div class="metric-icon text-primary mb-3"><i class="fas fa-users fa-3x"></i></div>
-                    <h5>Alunos ativos</h5>
+                    <h5>{{ 'Alunos ativos' if gestora else 'Meus alunos ativos' }}</h5>
                     <h2 class="text-primary">{{ total_alunos }}</h2>
                 </div>
             </div>
         </div>
+        {% if gestora %}
         <div class="col-md-3">
             <div class="card card-metric shadow-sm">
                 <div class="card-body text-center">
@@ -59,10 +63,32 @@
                 </div>
             </div>
         </div>
+        {% endif %}
+        {% if not gestora %}
+        <div class="col-md-4">
+            <div class="card card-metric shadow-sm">
+                <div class="card-body text-center">
+                    <div class="metric-icon text-success mb-3"><i class="fas fa-clipboard-check fa-3x"></i></div>
+                    <h5>Aulas registradas</h5>
+                    <h2 class="text-success">{{ aulas_dia_semana.aulas|sum }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card card-metric shadow-sm">
+                <div class="card-body text-center">
+                    <div class="metric-icon text-danger mb-3"><i class="fas fa-user-slash fa-3x"></i></div>
+                    <h5>Faltas registradas</h5>
+                    <h2 class="text-danger">{{ aulas_dia_semana.faltas|sum }}</h2>
+                </div>
+            </div>
+        </div>
+        {% endif %}
     </div>
 
     <!-- Gráficos -->
     <div class="row g-3">
+        {% if gestora %}
         <div class="col-md-4">
             <div class="card shadow-sm border-0 h-100">
                 <div class="card-header bg-white py-3"><h5 class="mb-0"><i class="fas fa-chart-bar me-2 text-primary"></i>Situação financeira</h5></div>
@@ -75,22 +101,26 @@
                 <div class="card-body"><canvas id="recebidoChart" height="250"></canvas></div>
             </div>
         </div>
-        <div class="col-md-4">
+        {% endif %}
+        <div class="{{ 'col-md-4' if gestora else 'col-md-6' }}">
             <div class="card shadow-sm border-0 h-100">
                 <div class="card-header bg-white py-3"><h5 class="mb-0"><i class="fas fa-chart-pie me-2 text-warning"></i>Alunos por instrumento</h5></div>
                 <div class="card-body"><canvas id="instrumentoChart" height="250"></canvas></div>
             </div>
         </div>
+    {% if gestora %}
     </div>
 
     <!-- Risco de evasão -->
     <div class="row g-3 mt-1">
-        <div class="col-md-4">
+    {% endif %}
+        <div class="{{ 'col-md-4' if gestora else 'col-md-6' }}">
             <div class="card shadow-sm border-0 h-100">
                 <div class="card-header bg-white py-3"><h5 class="mb-0"><i class="fas fa-shield-heart me-2 text-danger"></i>Risco de evasão</h5></div>
                 <div class="card-body"><canvas id="riscoChart" height="250"></canvas></div>
             </div>
         </div>
+        {% if gestora %}
         <div class="col-md-8">
             <div class="card shadow-sm border-0 h-100">
                 <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
@@ -127,6 +157,7 @@
                 {% endif %}
             </div>
         </div>
+        {% endif %}
     </div>
 
     <!-- Frequência: presença por instrumento, alunos mais faltosos, aulas por dia da semana -->
@@ -214,13 +245,13 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const dadosInstrumentos = {{ dados_instrumentos|tojson }};
-    const dadosRecebido = {{ dados_recebido|tojson }};
     const riscos = {{ riscos|tojson }};
+    {% if current_user.papel == 'gestora' %}const dadosRecebido = {{ dados_recebido|tojson }};{% endif %}
 
+    {% if current_user.papel == 'gestora' %}
     // Gráfico 1: Situação financeira (barras)
     new Chart(document.getElementById('financeiroChart').getContext('2d'), {
         type: 'bar',
@@ -244,6 +275,7 @@ document.addEventListener('DOMContentLoaded', function() {
         },
         options: { responsive: true, scales: { y: { ticks: { callback: function(v){ return 'R$ ' + v.toFixed(2); } } } } }
     });
+    {% endif %}
 
     // Gráfico 3: Alunos por instrumento (pizza)
     const backgroundColors = ['rgba(255, 99, 132, 0.8)','rgba(54, 162, 235, 0.8)','rgba(255, 206, 86, 0.8)','rgba(75, 192, 192, 0.8)','rgba(153, 102, 255, 0.8)','rgba(255, 159, 64, 0.8)','rgba(199, 199, 199, 0.8)','rgba(83, 102, 255, 0.8)','rgba(78, 205, 196, 0.8)','rgba(255, 99, 71, 0.8)'];
@@ -287,6 +319,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    {% if current_user.papel == 'gestora' %}
     // Alunos que pedem atenção: 10 por página (as linhas já vêm ordenadas por score;
     // a paginação só esconde/mostra, sem nova requisição)
     const tabelaAtencao = document.getElementById('tabelaAtencao');
@@ -319,6 +352,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         mostrarPagina(0);
     }
+    {% endif %}
 
     // Gráfico 6: Aulas e faltas por dia da semana
     const diaSemana = {{ aulas_dia_semana|tojson }};

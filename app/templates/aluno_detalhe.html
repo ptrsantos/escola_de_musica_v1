@@ -3,6 +3,7 @@
 {% block title %}{{ aluno.nome }}{% endblock %}
 
 {% block content %}
+{% set gestora = current_user.papel == 'gestora' %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
         <h2 class="mb-0">{{ aluno.nome }}</h2>
@@ -28,19 +29,19 @@
                     <dt class="col-5">Endereço</dt><dd class="col-7">{{ aluno.endereco or '—' }}</dd>
                     <dt class="col-5">E-mail</dt><dd class="col-7">{{ aluno.email or '—' }}</dd>
                     <dt class="col-5">Instrumento</dt><dd class="col-7">{{ aluno.instrumento.nome }}</dd>
-                    <dt class="col-5">Aula</dt><dd class="col-7">{{ aluno.horario_aula_descricao or 'Sem horário fixo' }}</dd>
-                    <dt class="col-5">Mensalidade</dt><dd class="col-7">R$ {{ aluno.mensalidade_base|moeda }}</dd>
+                    <dt class="col-5">Aula</dt><dd class="col-7">{{ aluno.horario_aula or 'Sem horário fixo' }}</dd>
+                    {% if gestora %}<dt class="col-5">Mensalidade</dt><dd class="col-7">R$ {{ aluno.mensalidade_base|moeda }}</dd>{% endif %}
                     <dt class="col-5">Status</dt><dd class="col-7">{{ aluno.status|capitalize }}</dd>
-                    <dt class="col-5">Aula semanal</dt><dd class="col-7">{{ aluno.horario_aula or '—' }}</dd>
                 </dl>
             </div>
         </div>
     </div>
     <div class="col-md-8">
         <div class="card shadow-sm border-0 h-100">
-            <div class="card-header bg-white"><h5 class="mb-0">Situação financeira e risco</h5></div>
+            <div class="card-header bg-white"><h5 class="mb-0">{{ 'Situação financeira e risco' if gestora else 'Risco de evasão' }}</h5></div>
             <div class="card-body">
                 <div class="row text-center">
+                    {% if gestora %}
                     <div class="col">
                         <div class="text-muted small">Situação</div>
                         {% if aluno.inadimplente %}<span class="inadimplente fw-bold">Inadimplente</span>{% else %}<span class="adimplente fw-bold">Adimplente</span>{% endif %}
@@ -49,18 +50,33 @@
                         <div class="text-muted small">Valor em aberto</div>
                         <strong>R$ {{ aluno.valor_em_aberto|moeda }}</strong>
                     </div>
+                    {% endif %}
                     <div class="col">
                         <div class="text-muted small">Risco de evasão</div>
                         <span class="badge-risco risco-{{ 'alto' if aluno.risco=='alto' else 'medio' if aluno.risco=='médio' else 'baixo' }}">{{ aluno.risco|capitalize }} ({{ aluno.risco_score }})</span>
                     </div>
+                    {% if not gestora %}
+                    <div class="col">
+                        <div class="text-muted small">Presença</div>
+                        <strong>{% if presenca.taxa is not none %}{{ (100 * presenca.taxa)|round|int }}%{% else %}—{% endif %}</strong>
+                    </div>
+                    <div class="col">
+                        <div class="text-muted small">Aulas com presença</div>
+                        <strong>{{ presenca.aulas }}</strong>
+                    </div>
+                    {% endif %}
                 </div>
+                {# Os motivos do modelo citam atraso e valor de mensalidade: são da gestora. #}
+                {% if gestora %}
                 <hr>
                 <p class="small mb-0"><strong>Fatores de risco:</strong> {{ aluno.risco_motivos|join('; ') }}</p>
+                {% endif %}
             </div>
         </div>
     </div>
 </div>
 
+{% if gestora %}
 <div class="card shadow-sm border-0 mb-3">
     <div class="card-header bg-white"><h5 class="mb-0"><i class="fas fa-wallet me-2 text-primary"></i>Histórico de mensalidades</h5></div>
     <div class="card-body p-0">
@@ -84,6 +100,7 @@
         </div>
     </div>
 </div>
+{% endif %}
 
 <div class="card shadow-sm border-0">
     <div class="card-header bg-white d-flex justify-content-between align-items-center">
@@ -105,7 +122,7 @@
                     <div class="d-flex justify-content-between align-items-start">
                         <div class="text-muted small">{{ aula.data.strftime('%d/%m/%Y') }} · {{ aula.professora }}</div>
                         {% if current_user.papel in ['gestora','professora'] %}
-                        <form method="POST" action="{{ url_for('excluir_aula', id=aula.id) }}" onsubmit="return confirm('Excluir este acompanhamento?');">
+                        <form method="POST" action="{{ url_for('excluir_aula', id=aula.id) }}" onsubmit="return confirm('Excluir este acompanhamento?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <input type="hidden" name="next" value="{{ url_for('aluno_detalhe', id=aluno.id) }}">
                             <button class="btn btn-sm btn-outline-danger py-0" title="Excluir"><i class="fas fa-trash"></i></button>
                         </form>

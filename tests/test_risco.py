@@ -177,13 +177,13 @@ def test_app_usa_o_modelo_quando_ha_json(tmp_path):
         ana = db.session.get(Aluno, ids['ana'])       # 0: sigmoide(-2) = 0,12
         assert bruno.risco_score == 50 and bruno.risco == 'alto'
         assert bruno.risco_motivos == ['2 mensalidade(s) em atraso']
-        assert carla.risco_score == 27 and carla.risco == 'médio'
+        assert carla.risco_score == 27 and carla.risco == 'baixo'   # limiar médio = 35
         assert ana.risco_score == 12 and ana.risco == 'baixo'
         assert ana.risco_motivos == ['situação regular']
 
     client = app.test_client()
     logar_gestora(client)
-    assert client.get('/api/dashboard-data').get_json()['risco'] == {'baixo': 1, 'médio': 1, 'alto': 1}
+    assert client.get('/api/dashboard-data').get_json()['risco'] == {'baixo': 2, 'médio': 0, 'alto': 1}
     html = texto(client.get(f'/aluno/{ids["bruno"]}'))
     assert 'Alto (50)' in html and '2 mensalidade(s) em atraso' in html
     assert client.get('/dashboard').status_code == 200

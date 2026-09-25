@@ -122,7 +122,7 @@ def test_csrf_barra_post_sem_token():
     token = obter_csrf(client, '/login')
     r = client.post('/login', data={'email': 'gestora@escola.com', 'senha': SENHA,
                                     'csrf_token': token})
-    assert r.status_code == 302 and r.headers['Location'].endswith('/dashboard')
+    assert r.status_code == 302 and r.headers['Location'].endswith('/inicio')
     assert client.get('/dashboard').status_code == 200
 
     # exclusão sem token é barrada
@@ -138,3 +138,46 @@ def test_csrf_barra_post_sem_token():
         assert db.session.get(Aluno, aluno_id) is None
         db.session.remove()
         db.drop_all()
+
+
+def test_todo_formulario_post_tem_token_csrf():
+    """Com CSRFProtect ativo, um formulário POST sem csrf_token nunca salva: o
+    usuário só vê "sua sessão expirou". Aconteceu com as telas que chegaram na
+    main em 22/09 (instrumentos, usuários, financeiro), então virou teste."""
+    import os
+    import re
+    raiz = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        'app', 'templates')
+    abertura = re.compile(r'<form[^>]*method="POST"[^>]*>', re.IGNORECASE)
+    sem_token = []
+    for nome in sorted(os.listdir(raiz)):
+        if not nome.endswith('.html'):
+            continue
+        with open(os.path.join(raiz, nome), encoding='utf-8') as f:
+            conteudo = f.read()
+        for m in abertura.finditer(conteudo):
+            fim = conteudo.find('</form>', m.end())
+            corpo = conteudo[m.end():fim if fim != -1 else len(conteudo)]
+            if 'csrf_token()' not in corpo:
+                linha = conteudo[:m.start()].count(chr(10)) + 1
+                sem_token.append(f'{nome}:{linha}')
+    assert not sem_token, 'formulários POST sem csrf_token: ' + ', '.join(sem_token)
+
+
+# ---------------------------------------------------------------------------
+# Banco de produção (defeito nº 10)
+# ---------------------------------------------------------------------------
+def test_sem_database_url_no_vercel_nao_sobe(monkeypatch):
+    """No Vercel, sem DATABASE_URL, o app caía no SQLite de um disco efêmero e
+    os dados sumiam sem erro. Agora não sobe e diz o que falta."""
+    import pytest
+    from app import _resolver_database_uri
+    monkeypatch.delenv('DATABASE_URL', raising=False)
+    monkeypatch.setenv('VERCEL', '1')
+    with pytest.raises(RuntimeError, match='DATABASE_URL'):
+        _resolver_database_uri()
+    monkeypatch.setenv('DATABASE_URL', 'postgres://u:s@host/db?sslmode=require')
+    assert _resolver_database_uri() == 'postgresql://u:s@host/db?sslmode=require'
+    monkeypatch.delenv('DATABASE_URL')
+    monkeypatch.delenv('VERCEL')
+    assert _resolver_database_uri() == 'sqlite:///escola_musica.db'     # local segue igual

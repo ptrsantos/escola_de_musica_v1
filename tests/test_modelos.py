@@ -123,7 +123,14 @@ def test_ultima_aula_e_risco_por_aula(app):
         nova_aula(c, 1)
         db.session.commit()
         c = Aluno.query.filter_by(nome='C').one()
-        assert c.risco_score == 25 and c.risco == 'médio'
+        assert c.risco_score == 25 and c.risco == 'baixo'     # limiar médio = 35 (24/09)
+
+        d = novo_aluno('D', mensalidade=50.0)
+        nova_mensalidade(d, 1, False)
+        nova_aula(d, 61)
+        db.session.commit()
+        d = Aluno.query.filter_by(nome='D').one()
+        assert d.risco_score == 40 and d.risco == 'médio'     # 25 do atraso + 15 sem aula recente
 
 
 def test_excluir_aluno_leva_mensalidades_pagamentos_e_aulas(app):

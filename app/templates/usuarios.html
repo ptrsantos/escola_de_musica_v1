@@ -47,7 +47,7 @@
 <div class="modal fade" id="novoUsuarioModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
-            <form method="POST" action="{{ url_for('adicionar_usuario') }}">
+            <form method="POST" action="{{ url_for('adicionar_usuario') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="modal-header"><h5 class="modal-title">Novo usuário</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                 <div class="modal-body">
                     <div class="mb-3"><label class="form-label">Nome *</label><input type="text" class="form-control" name="nome" required></div>
@@ -69,7 +69,7 @@
 <div class="modal fade" id="editarUsuarioModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
-            <form method="POST" id="form-editar-usuario">
+            <form method="POST" id="form-editar-usuario"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="modal-header"><h5 class="modal-title">Editar usuário</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                 <div class="modal-body">
                     <div class="mb-3"><label class="form-label">Nome *</label><input type="text" class="form-control" name="nome" id="edit-u-nome" required></div>
@@ -95,7 +95,7 @@
             <div class="modal-body"><p>Excluir o usuário <strong id="excluir-u-nome"></strong>?</p><p class="text-danger small mb-0">Esta ação não pode ser desfeita.</p></div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <form id="form-excluir-usuario" method="POST"><button type="submit" class="btn btn-danger">Excluir</button></form>
+                <form id="form-excluir-usuario" method="POST"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn btn-danger">Excluir</button></form>
             </div>
         </div>
     </div>

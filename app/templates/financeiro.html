@@ -56,7 +56,7 @@
                             {% if m.status != 'pago' %}
                             <form class="d-flex gap-1" method="POST" action="{{ url_for('registrar_pagamento', id=m.id) }}">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                <input type="hidden" name="valor" value="{{ m.valor - m.valor_pago }}">
+                                <input type="hidden" name="valor" value="{{ '%.2f'|format(m.valor - m.valor_pago) }}">
                                 <input class="form-control form-control-sm" type="date" name="data_pagamento" value="{{ hoje }}">
                                 <button class="btn btn-sm btn-success" title="Registrar quitação"><i class="fas fa-check"></i></button>
                             </form>
@@ -124,7 +124,7 @@
 <div class="modal fade" id="editarMensalidadeModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
-            <form method="POST" id="form-editar-mensalidade">
+            <form method="POST" id="form-editar-mensalidade"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="modal-header"><h5 class="modal-title">Editar mensalidade</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                 <div class="modal-body">
                     <div class="mb-3"><label class="form-label">Aluno</label>
@@ -150,7 +150,7 @@
             <div class="modal-body"><p>Excluir a mensalidade <strong id="excluir-m-desc"></strong>?</p><p class="text-danger small mb-0">Os pagamentos vinculados também serão removidos. Esta ação não pode ser desfeita.</p></div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <form id="form-excluir-mensalidade" method="POST"><button type="submit" class="btn btn-danger">Excluir</button></form>
+                <form id="form-excluir-mensalidade" method="POST"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn btn-danger">Excluir</button></form>
             </div>
         </div>
     </div>
@@ -173,13 +173,13 @@
                             <td>R$ {{ p.valor|moeda }}</td>
                             <td class="small text-muted">{{ p.observacao or '—' }}</td>
                             <td class="text-end">
-                                <form method="POST" action="{{ url_for('editar_pagamento', id=p.id) }}" class="d-inline-flex gap-1 align-items-center">
+                                <form method="POST" action="{{ url_for('editar_pagamento', id=p.id) }}" class="d-inline-flex gap-1 align-items-center"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                     <input type="date" class="form-control form-control-sm" name="data_pagamento" value="{{ p.data_pagamento.isoformat() }}" style="width:140px">
                                     <input type="number" step="0.01" class="form-control form-control-sm" name="valor" value="{{ '%.2f'|format(p.valor) }}" style="width:100px">
                                     <input type="text" class="form-control form-control-sm" name="observacao" value="{{ p.observacao or '' }}" placeholder="obs" style="width:120px">
                                     <button class="btn btn-sm btn-outline-primary" title="Salvar"><i class="fas fa-save"></i></button>
                                 </form>
-                                <form method="POST" action="{{ url_for('excluir_pagamento', id=p.id) }}" class="d-inline">
+                                <form method="POST" action="{{ url_for('excluir_pagamento', id=p.id) }}" class="d-inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                     <button class="btn btn-sm btn-outline-danger" title="Excluir"><i class="fas fa-trash"></i></button>
                                 </form>
                             </td>
@@ -191,7 +191,7 @@
                 </table>
               </div>
                 <hr>
-                <form method="POST" action="{{ url_for('registrar_pagamento', id=m.id) }}" class="row g-2 align-items-end">
+                <form method="POST" action="{{ url_for('registrar_pagamento', id=m.id) }}" class="row g-2 align-items-end"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <div class="col-auto"><label class="form-label small mb-0">Data</label><input type="date" class="form-control form-control-sm" name="data_pagamento" value="{{ hoje }}"></div>
                     <div class="col-auto"><label class="form-label small mb-0">Valor</label><input type="number" step="0.01" class="form-control form-control-sm" name="valor" value="{{ '%.2f'|format(m.valor - m.valor_pago) }}"></div>
                     <div class="col"><label class="form-label small mb-0">Observação</label><input type="text" class="form-control form-control-sm" name="observacao"></div>
