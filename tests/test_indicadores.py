@@ -3,7 +3,7 @@ Indicadores pedagógicos (app/indicadores.py): marcador de presença na
 observação, resumo por aluno, alunos mais faltosos, presença por instrumento,
 aulas por dia da semana — e as telas que os mostram.
 """
-from datetime import date
+from datetime import date, timedelta
 from types import SimpleNamespace
 
 from app import db
@@ -88,15 +88,20 @@ def test_indicadores_pedagogicos(app):
 def test_formulario_de_aula_grava_o_marcador(app, dados):
     client = app.test_client()
     logar_professora(client)
-    r = client.post('/acompanhamento', data={'aluno_id': dados['ana'], 'data': '2026-09-16',
+    # Datas relativas a hoje: as aulas do conjunto de teste ficam sempre no
+    # passado (hoje - dias_atras), então filtrar por "depois de hoje" isola as
+    # duas aulas criadas aqui, em qualquer dia em que a suíte rodar.
+    amanha = date.today() + timedelta(days=1)
+    depois = date.today() + timedelta(days=2)
+    r = client.post('/acompanhamento', data={'aluno_id': dados['ana'], 'data': amanha.isoformat(),
                                              'presenca': 'falta', 'observacao': 'Faltou sem avisar'})
     assert r.status_code == 302
-    r = client.post('/acompanhamento', data={'aluno_id': dados['ana'], 'data': '2026-09-17',
+    r = client.post('/acompanhamento', data={'aluno_id': dados['ana'], 'data': depois.isoformat(),
                                              'presenca': '', 'observacao': 'Só observação'})
     assert r.status_code == 302
     with app.app_context():
         obs = [a.observacao for a in Aula.query.filter_by(aluno_id=dados['ana'])
-               .filter(Aula.data >= date(2026, 9, 16)).order_by(Aula.data).all()]
+               .filter(Aula.data > date.today()).order_by(Aula.data).all()]
         assert obs == ['Presença: 0P/1A · Faltou sem avisar', 'Só observação']
 
 

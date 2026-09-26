@@ -1,0 +1,47 @@
+{% extends 'base.html' %}
+
+{% block title %}Alterar senha{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row">
+        <div class="col-md-6 offset-md-3">
+            <div class="card">
+                <div class="card-header bg-primary text-white d-flex align-items-center">
+                    <img src="{{ url_for('static', filename='logo.jpeg') }}" alt="Studio Duo" height="36" class="me-3 logo-moldura">
+                    <h4 class="mb-0">Alterar senha</h4>
+                </div>
+                <div class="card-body">
+                    <form method="POST">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <div class="mb-3">
+                            <label for="email" class="form-label">Email</label>
+                            <input type="email" class="form-control" id="email" name="email" value="{{ email }}" autocomplete="username" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="senha_atual" class="form-label">Senha atual</label>
+                            <input type="password" class="form-control" id="senha_atual" name="senha_atual" autocomplete="current-password" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="nova_senha" class="form-label">Nova senha</label>
+                            <input type="password" class="form-control" id="nova_senha" name="nova_senha" minlength="6" autocomplete="new-password" required>
+                            <div class="form-text">Pelo menos 6 caracteres.</div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="confirmar_senha" class="form-label">Confirme a nova senha</label>
+                            <input type="password" class="form-control" id="confirmar_senha" name="confirmar_senha" minlength="6" autocomplete="new-password" required>
+                        </div>
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary">Alterar senha</button>
+                        </div>
+                    </form>
+                    <div class="mt-3 text-center small">
+                        <a href="{{ url_for('login') }}">Voltar para o login</a>
+                        <p class="text-muted mb-0 mt-2">Esqueceu a senha atual? Peça à gestora da escola para definir uma nova.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

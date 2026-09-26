@@ -59,12 +59,15 @@ def test_anonimo_vai_para_login(dados, client):
 
 def test_aluno_so_ve_a_propria_area(dados, client):
     logar_aluno(client)
-    r = client.get('/dashboard')
-    assert r.status_code == 302 and r.headers['Location'].endswith('/minha-area')
+    r = client.get('/dashboard')                  # painel do aluno (test_painel_aluno.py)
+    assert r.status_code == 200 and 'Meu painel' in texto(r)
     r = client.get('/minha-area')
     assert r.status_code == 200 and 'Adimplente' in texto(r)
-    assert client.get(f'/aluno/{dados["ana"]}').status_code == 200
-    assert client.get(f'/aluno/{dados["bruno"]}').status_code == 403
+    # A ficha (com o risco de evasão) é da escola: o aluno vai para o painel,
+    # seja a própria ficha, seja a de outro aluno.
+    for ficha in (dados['ana'], dados['bruno'], 99999):
+        r = client.get(f'/aluno/{ficha}')
+        assert r.status_code == 302 and r.headers['Location'].endswith('/dashboard')
     assert client.get('/alunos').status_code == 302
     assert client.get('/financeiro').status_code == 302
 
@@ -75,14 +78,20 @@ def test_logout(dados, client):
     assert client.get('/dashboard').status_code == 302
 
 
+def test_chartjs_carregado_uma_vez_so(dados, client):
+    """Defeito nº 7: o dashboard pedia uma segunda cópia do Chart.js."""
+    logar_gestora(client)
+    assert texto(client.get('/dashboard')).count('npm/chart.js') == 1
+
+
 # ---------------------------------------------------------------------------
 # Conteúdo — dashboard, relatórios, financeiro, alunos
 # ---------------------------------------------------------------------------
 def test_dashboard_metricas(dados, client):
     logar_gestora(client)
     html = texto(client.get('/dashboard'))
-    assert 'R$ 1900,00' in html                 # recebido
-    assert '/ 3030,00' in html                  # previsto
+    assert 'R$ 1.900,00' in html                 # recebido
+    assert '/ 3.030,00' in html                  # previsto
     assert '<h2 class="text-primary">3</h2>' in html   # ativos
     assert '<h2 class="text-danger">2</h2>' in html    # inadimplentes
     assert '<h2 class="text-warning">3</h2>' in html   # mensalidades em atraso
@@ -118,7 +127,7 @@ def test_api_dashboard_data(dados, client):
 def test_relatorios_totais(dados, client):
     logar_gestora(client)
     html = texto(client.get('/relatorios'))
-    assert 'R$ 3030,00' in html and 'R$ 1900,00' in html and 'R$ 1130,00' in html
+    assert 'R$ 3.030,00' in html and 'R$ 1.900,00' in html and 'R$ 1.130,00' in html
     assert 'R$ 600,00' in html   # em aberto do Bruno
     assert 'R$ 280,00' in html   # em aberto da Carla
     assert 'Diego Lima' in html  # relatórios listam também os inativos
@@ -191,6 +200,35 @@ def test_registrar_pagamento_parcial(dados, app, client):
     assert 'R$ 200,00' in html   # Carla: 280 - 80
 
 
+def test_pagamento_em_partes_quita_sem_erro_de_centavo(dados, app, client):
+    """Defeito nº 4 (dinheiro em float): 100,10 + 150,20 = 250,2999… e a
+    mensalidade de 250,30 continuava em atraso. A comparação é em centavos e o
+    saldo padrão vai arredondado."""
+    with app.app_context():
+        m = Mensalidade.query.filter_by(aluno_id=dados['carla'], status='em atraso').first()
+        m.valor = 250.30
+        db.session.commit()
+        m_id = m.id
+    logar_gestora(client)
+    client.post(f'/registrar_pagamento/{m_id}', data={'valor': '100.10'})
+    client.post(f'/registrar_pagamento/{m_id}', data={'valor': '150.20'})
+    with app.app_context():
+        assert db.session.get(Mensalidade, m_id).status == 'pago'
+
+    with app.app_context():
+        m = Mensalidade.query.filter_by(aluno_id=dados['bruno'], status='em atraso').first()
+        m.valor = 250.30
+        m.pagamentos.append(Pagamento(valor=100.10, data_pagamento=date.today()))
+        db.session.commit()
+        m_id = m.id
+    html = texto(client.get('/financeiro?status=em+atraso'))
+    assert 'name="valor" value="150.20"' in html          # saldo em centavos, sem 150.2000…
+    client.post(f'/registrar_pagamento/{m_id}', data={})  # sem valor: paga o saldo
+    with app.app_context():
+        m = db.session.get(Mensalidade, m_id)
+        assert m.status == 'pago' and m.pagamentos[-1].valor == 150.20
+
+
 def test_adicionar_mensalidade(dados, app, client):
     logar_gestora(client)
     r = client.post('/adicionar_mensalidade', data={
@@ -222,15 +260,30 @@ def test_adicionar_editar_excluir_aluno(dados, app, client):
 
 
 def test_acompanhamento_registra_aula(dados, app, client):
+    """A professora registra aula para um aluno dela (Ana já teve aula com ela)."""
     logar_professora(client)
-    r = client.post('/acompanhamento', data={'aluno_id': dados['carla'],
+    r = client.post('/acompanhamento', data={'aluno_id': dados['ana'],
                                              'observacao': 'Primeira aula', 'orientacao_estudo': 'Escalas'})
     assert r.status_code == 302
     with app.app_context():
-        aula = Aula.query.filter_by(aluno_id=dados['carla']).one()
+        aula = (Aula.query.filter_by(aluno_id=dados['ana'])
+                .order_by(Aula.id.desc()).first())
         assert aula.professora == 'Flávia (Professora)' and aula.data == date.today()
+        assert aula.observacao == 'Primeira aula'
     html = texto(client.get('/acompanhamento'))
     assert 'Primeira aula' in html
+
+
+def test_acompanhamento_nao_registra_aula_de_aluno_de_outra(dados, app, client):
+    """Carla não teve aula com a professora logada: não é aluna dela, e tentar
+    registrar por ela (ou só adivinhar o id) é barrado — senão bastaria um POST
+    para passar a enxergar a ficha de qualquer aluno da escola."""
+    logar_professora(client)
+    r = client.post('/acompanhamento', data={'aluno_id': dados['carla'],
+                                             'observacao': 'Aula de outra'})
+    assert r.status_code == 403
+    with app.app_context():
+        assert Aula.query.filter_by(aluno_id=dados['carla']).count() == 0
 
 
 def test_dashboard_pagina_os_alunos_que_pedem_atencao(app):

@@ -8,6 +8,14 @@ Uso:
     python migrar_para_nuvem.py --dry-run   # compara estrutura e conta linhas; não grava
     python migrar_para_nuvem.py             # carrega tudo (só se as tabelas do destino estiverem vazias)
     python migrar_para_nuvem.py --limpar    # apaga as LINHAS do destino e carrega tudo de novo
+    python migrar_para_nuvem.py --so-horarios   # só atualiza dia/hora da aula dos alunos
+
+--so-horarios é a carga mínima, para quando o destino já tem os dados e só falta
+o horário fixo da aula (como em 22/09/2026, quando as colunas existiam lá vazias):
+um UPDATE por aluno, casando pelo id, apenas em dia_aula_semana e hora_aula. Não
+apaga nada, não toca em nenhuma outra tabela e pula (listando) o aluno cujo valor
+no destino já esteja preenchido e diferente — assim um horário cadastrado pela
+gestora no app publicado não é sobrescrito pelo SQLite local. Aceita --dry-run.
 
 Origem:  sempre o SQLite de instance/, mesmo que DATABASE_URL esteja definida.
 Destino: NUVEM_DATABASE_URL ou, na falta, DATABASE_URL — lidas do ambiente, do
@@ -22,8 +30,9 @@ gravado (estado, não estrutura), senão o próximo cadastro pelo app colidiria.
 import argparse
 import os
 import sys
+from datetime import time
 
-from sqlalchemy import MetaData, create_engine, delete, func, insert, select, text
+from sqlalchemy import MetaData, bindparam, create_engine, delete, func, insert, select, text, update
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import InvalidRequestError
 
@@ -31,6 +40,7 @@ from app import create_app, db
 from app.models import Instrumento, Usuario, Aluno, Mensalidade, Pagamento, Aula  # noqa: F401  (registra as tabelas)
 
 TABELAS = ['instrumento', 'usuario', 'aluno', 'mensalidade', 'pagamento', 'aula']  # ordem das FKs
+COLUNAS_HORARIO = ['dia_aula_semana', 'hora_aula']   # o que --so-horarios atualiza
 LOTE = 1000
 ORIGEM_URI = 'sqlite:///escola_musica.db'   # relativo a instance/, como no create_app()
 
@@ -106,6 +116,88 @@ def carregar(engine_origem, meta_origem, engine_destino, meta_destino, limpar):
     return resumo
 
 
+def como_hora(valor):
+    """O SQLite guarda TIME como texto; o Postgres quer um datetime.time.
+    Quando a leitura vem pelos metadados o SQLAlchemy já converte — isto é só
+    uma rede de segurança para o caso de vir string."""
+    if valor is None or isinstance(valor, time):
+        return valor
+    texto = str(valor).strip()
+    return time.fromisoformat(texto.split('.')[0]) if texto else None
+
+
+def atualizar_horarios(engine_origem, meta_origem, engine_destino, meta_destino, aplicar):
+    """UPDATE só em aluno.dia_aula_semana / aluno.hora_aula, casando pelo id.
+
+    Não apaga nada e não toca em nenhuma outra coluna. Devolve o resumo; com
+    ``aplicar=False`` apenas simula."""
+    t_origem, t_destino = meta_origem.tables['aluno'], meta_destino.tables['aluno']
+    faltando = [c for c in COLUNAS_HORARIO if c not in t_destino.columns]
+    if faltando:
+        sys.exit(f'\nO destino não tem {faltando} em aluno — rode inicializar_db.py lá primeiro. '
+                 'Nada foi gravado.')
+
+    with engine_origem.connect() as src:
+        origem = {
+            linha.id: (linha.dia_aula_semana, como_hora(linha.hora_aula))
+            for linha in src.execute(
+                select(t_origem.c.id, t_origem.c.dia_aula_semana, t_origem.c.hora_aula)
+                .where(t_origem.c.dia_aula_semana.isnot(None)
+                       | t_origem.c.hora_aula.isnot(None))
+                .order_by(t_origem.c.id))
+        }
+    with engine_destino.connect() as dst:
+        destino = {
+            linha.id: (linha.dia_aula_semana, como_hora(linha.hora_aula))
+            for linha in dst.execute(
+                select(t_destino.c.id, t_destino.c.dia_aula_semana, t_destino.c.hora_aula))
+        }
+
+    a_gravar, conflitos, ausentes, iguais = [], [], [], 0
+    for id_aluno, (dia, hora) in origem.items():
+        if id_aluno not in destino:
+            ausentes.append(id_aluno)
+        elif destino[id_aluno] == (dia, hora):
+            iguais += 1
+        elif any(v is not None for v in destino[id_aluno]):
+            # já preenchido no destino e diferente: pode ter sido cadastrado lá
+            conflitos.append((id_aluno, destino[id_aluno], (dia, hora)))
+        else:
+            a_gravar.append({'b_id': id_aluno, 'dia': dia, 'hora': hora})
+
+    print(f'\nhorários — alunos com dia ou hora na origem: {len(origem)}')
+    print(f'  a atualizar no destino : {len(a_gravar)} '
+          f'(com dia: {sum(1 for l in a_gravar if l["dia"] is not None)}, '
+          f'com hora: {sum(1 for l in a_gravar if l["hora"] is not None)})')
+    print(f'  já iguais lá           : {iguais}')
+    print(f'  preenchidos e diferentes (não serão tocados): {len(conflitos)}')
+    for id_aluno, la, aqui in conflitos[:10]:
+        print(f'    aluno {id_aluno}: destino {la} × origem {aqui}')
+    if len(conflitos) > 10:
+        print(f'    ... e mais {len(conflitos) - 10}')
+    if ausentes:
+        print(f'  sem aluno correspondente no destino: {len(ausentes)} {ausentes[:10]}')
+
+    if not aplicar or not a_gravar:
+        return {'atualizados': 0, 'iguais': iguais, 'conflitos': len(conflitos),
+                'ausentes': len(ausentes)}
+
+    comando = (update(t_destino)
+               .where(t_destino.c.id == bindparam('b_id'))
+               .values(dia_aula_semana=bindparam('dia'), hora_aula=bindparam('hora')))
+    with engine_destino.begin() as dst:
+        atualizados = dst.execute(comando, a_gravar).rowcount
+    print(f'\n  linhas atualizadas: {atualizados}')
+
+    with engine_destino.connect() as dst:
+        com_dia, com_hora = dst.execute(select(
+            func.count(t_destino.c.dia_aula_semana),
+            func.count(t_destino.c.hora_aula))).one()
+    print(f'  conferência no destino -> com dia: {com_dia} | com hora: {com_hora}')
+    return {'atualizados': atualizados, 'iguais': iguais, 'conflitos': len(conflitos),
+            'ausentes': len(ausentes)}
+
+
 def relatorio(engine_origem, meta_origem, engine_destino, meta_destino):
     print(f'\n{"tabela":12s} {"origem":>8s} {"destino":>8s}')
     with engine_origem.connect() as src, engine_destino.connect() as dst:
@@ -125,9 +217,15 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--dry-run', action='store_true', help='só compara estrutura e conta linhas')
     parser.add_argument('--limpar', action='store_true', help='apaga as linhas do destino antes de carregar')
+    parser.add_argument('--so-horarios', action='store_true',
+                        help='não carrega nada: só atualiza dia/hora da aula dos alunos no destino')
     parser.add_argument('--destino', help='URL do destino (padrão: NUVEM_DATABASE_URL ou DATABASE_URL do .env)')
     parser.add_argument('--env', metavar='ARQUIVO', help='arquivo .env alternativo com a URL do destino (ex.: .env.migracao)')
     args = parser.parse_args(argv)
+
+    if args.so_horarios and args.limpar:
+        sys.exit('--so-horarios e --limpar se excluem: um atualiza duas colunas, o outro '
+                 'apaga e recarrega tudo.')
 
     if args.env:
         from dotenv import load_dotenv
@@ -163,6 +261,14 @@ def main(argv=None):
 
         if problemas:
             sys.exit('\nEstrutura do destino incompatível — nada foi gravado (o script não altera estrutura).')
+
+        if args.so_horarios:
+            atualizar_horarios(engine_origem, meta_origem, engine_destino, meta_destino,
+                               aplicar=not args.dry_run)
+            print('\n--dry-run: nada foi gravado.' if args.dry_run
+                  else '\nHorários atualizados. Nenhuma outra coluna ou tabela foi tocada.')
+            return 0
+
         if args.dry_run:
             print('\n--dry-run: nada foi gravado.')
             return 0

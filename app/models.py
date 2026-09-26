@@ -87,11 +87,6 @@ class Aluno(db.Model):
     dia_aula_semana = db.Column(db.Integer, nullable=True)
     hora_aula = db.Column(db.Time, nullable=True)
 
-    # Horário de aula recorrente (semanal). Convenção weekday(): segunda=0..domingo=6.
-    # NULL = aluno sem horário fixo definido.
-    dia_aula_semana = db.Column(db.Integer, nullable=True)
-    hora_aula = db.Column(db.Time, nullable=True)
-
     mensalidades = db.relationship('Mensalidade', backref='aluno', lazy=True,
                                    cascade='all, delete-orphan')
     aulas = db.relationship('Aula', backref='aluno', lazy=True,
@@ -221,7 +216,9 @@ class Mensalidade(db.Model):
 
     def atualizar_status(self, hoje=None):
         hoje = hoje or date.today()
-        if self.total_pago() >= self.valor:
+        # Comparação em centavos: com dinheiro em float (defeito nº 4),
+        # 100,10 + 150,20 dá 250,2999… e a mensalidade de 250,30 não quitava.
+        if round(self.total_pago(), 2) >= round(self.valor, 2):
             self.status = 'pago'
         elif self.vencimento < hoje:
             self.status = 'em atraso'
@@ -334,29 +331,41 @@ def format_date_for_form(date_obj):
 # ---------------------------------------------------------------------------
 # Consultas de apoio à página inicial operacional (home).
 # ---------------------------------------------------------------------------
-def alunos_com_aula_no_dia(dia_semana):
+def alunos_com_aula_no_dia(dia_semana, alunos_ids=None):
     """Alunos ativos com aula recorrente no dia da semana informado
-    (0=segunda..6=domingo), ordenados por horário."""
-    return (Aluno.query
-            .filter(Aluno.status == 'ativo',
-                    Aluno.dia_aula_semana == dia_semana)
-            .order_by(Aluno.hora_aula.asc().nullslast(), Aluno.nome)
-            .all())
+    (0=segunda..6=domingo), ordenados por horário.
+
+    ``alunos_ids`` limita a agenda a um conjunto de alunos — é o que mantém a
+    professora vendo só os alunos dela; ``None`` = a escola inteira."""
+    consulta = Aluno.query.filter(Aluno.status == 'ativo',
+                                  Aluno.dia_aula_semana == dia_semana)
+    if alunos_ids is not None:
+        consulta = consulta.filter(Aluno.id.in_(alunos_ids))
+    return consulta.order_by(Aluno.hora_aula.asc().nullslast(), Aluno.nome).all()
 
 
-def aniversariantes_do_dia(dia=None):
+def _ativos(alunos_ids=None):
+    """Alunos ativos, opcionalmente limitados a um conjunto de ids (o escopo da
+    professora). ``None`` = a escola inteira."""
+    consulta = Aluno.query.filter_by(status='ativo')
+    if alunos_ids is not None:
+        consulta = consulta.filter(Aluno.id.in_(alunos_ids))
+    return consulta.all()
+
+
+def aniversariantes_do_dia(dia=None, alunos_ids=None):
     """Alunos ativos que fazem aniversário no dia informado (padrão: hoje)."""
     dia = dia or date.today()
-    return [a for a in Aluno.query.filter_by(status='ativo').all()
+    return [a for a in _ativos(alunos_ids)
             if a.data_nascimento
             and (a.data_nascimento.month, a.data_nascimento.day) == (dia.month, dia.day)]
 
 
-def aniversariantes_do_mes(mes=None):
+def aniversariantes_do_mes(mes=None, alunos_ids=None):
     """Alunos ativos que fazem aniversário no mês informado (padrão: mês atual),
     ordenados por dia."""
     mes = mes or date.today().month
-    lista = [a for a in Aluno.query.filter_by(status='ativo').all()
+    lista = [a for a in _ativos(alunos_ids)
              if a.data_nascimento and a.data_nascimento.month == mes]
     return sorted(lista, key=lambda a: a.data_nascimento.day)
 

@@ -3,8 +3,12 @@
 {% block title %}Alunos{% endblock %}
 
 {% block content %}
+{% set gestora = current_user.papel == 'gestora' %}
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h2>Alunos</h2>
+    <div>
+        <h2 class="mb-0">{{ 'Alunos' if gestora else 'Meus alunos' }}</h2>
+        {% if not gestora %}<p class="text-muted mb-0 small">Alunos para quem você registrou aula.</p>{% endif %}
+    </div>
     {% if current_user.papel == 'gestora' %}
     <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#novoAlunoModal">
         <i class="fas fa-plus me-1"></i>Cadastrar aluno
@@ -26,15 +30,17 @@
         <div class="table-responsive">
             <table class="table table-striped table-hover mb-0">
                 <thead class="table-light">
-                    <tr><th>Aluno</th><th>Instrumento</th><th>Mensalidade</th><th>Situação</th><th>Risco</th><th>Ações</th></tr>
+                    <tr><th>Aluno</th><th>Instrumento</th>{% if gestora %}<th>Mensalidade</th><th>Situação</th>{% endif %}<th>Risco</th><th>Ações</th></tr>
                 </thead>
                 <tbody>
                     {% for aluno in alunos %}
                     <tr>
                         <td><strong>{{ aluno.nome }}</strong><br><small class="text-muted">{{ aluno.endereco or 'Endereço não informado' }}</small></td>
                         <td>{{ aluno.instrumento.nome }}</td>
+                        {% if gestora %}
                         <td>R$ {{ aluno.mensalidade_base|moeda }}</td>
                         <td>{% if aluno.inadimplente %}<span class="inadimplente">Inadimplente</span>{% else %}<span class="adimplente">Adimplente</span>{% endif %}</td>
+                        {% endif %}
                         <td><span class="badge-risco risco-{{ 'alto' if aluno.risco=='alto' else 'medio' if aluno.risco=='médio' else 'baixo' }}">{{ aluno.risco|capitalize }}</span></td>
                         <td>
                             <div class="btn-group btn-group-sm">
@@ -48,7 +54,7 @@
                         </td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="6" class="text-center py-4 text-muted"><i class="fas fa-box-open fa-2x mb-2"></i><p class="mb-0">Nenhum aluno encontrado.</p></td></tr>
+                    <tr><td colspan="{{ 6 if gestora else 4 }}" class="text-center py-4 text-muted"><i class="fas fa-box-open fa-2x mb-2"></i><p class="mb-0">{% if gestora %}Nenhum aluno encontrado.{% else %}Nenhum aluno vinculado a você ainda. O vínculo é criado quando você registra uma aula em Acompanhamento.{% endif %}</p></td></tr>
                     {% endfor %}
                 </tbody>
             </table>

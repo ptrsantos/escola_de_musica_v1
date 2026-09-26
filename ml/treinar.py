@@ -47,7 +47,7 @@ from ml.rotulos import rotulos_aluno_ano  # noqa: E402
 SEMENTE = 42
 DOBRAS = 5
 ANO_TESTE_TEMPORAL = 2025      # treina com anos anteriores, testa neste
-LIMIAR_MEDIO, LIMIAR_ALTO = 0.20, 0.50   # = RISK_CONFIG limiar_medio/alto ÷ 100
+LIMIAR_MEDIO, LIMIAR_ALTO = 0.35, 0.50   # = RISK_CONFIG limiar_medio/alto ÷ 100
 
 
 # ---------------------------------------------------------------------------

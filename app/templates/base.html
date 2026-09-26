@@ -241,7 +241,9 @@
     {% endif %}
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.5/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.0/dist/chart.min.js"></script>
+    {# Chart.js em versão fixa, carregado só aqui (defeito nº 7: o dashboard pedia
+       outra cópia, a "latest", por cima desta). #}
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1"></script>
 
     {# Spinner e comportamentos globais: ficam FORA do bloco de scripts das
        páginas filhas para continuarem disponíveis mesmo quando uma página

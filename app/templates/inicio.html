@@ -13,6 +13,9 @@
     </a>
 </div>
 
+{# Entradas do caixa são da gestora: a direção pediu em 22/09/2026 que a
+   professora não veja valores da escola. #}
+{% if current_user.papel == 'gestora' %}
 <!-- Balanço de entrada -->
 <div class="row g-4 mb-4">
     <div class="col-md-6">
@@ -41,6 +44,7 @@
         </div>
     </div>
 </div>
+{% endif %}
 
 <div class="row g-4">
     <!-- Agenda do dia -->
@@ -70,7 +74,7 @@
                                     {% if aluno.faz_aniversario_hoje %}
                                     <i class="fas fa-birthday-cake text-warning ms-1" title="Aniversário hoje"></i>
                                     {% endif %}
-                                    {% if aluno.inadimplente %}
+                                    {% if aluno.inadimplente and current_user.papel == 'gestora' %}
                                     <br><small class="inadimplente">Inadimplente</small>
                                     {% endif %}
                                 </td>
