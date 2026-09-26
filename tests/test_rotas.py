@@ -92,9 +92,12 @@ def test_dashboard_metricas(dados, client):
     html = texto(client.get('/dashboard'))
     assert 'R$ 1.900,00' in html                 # recebido
     assert '/ 3.030,00' in html                  # previsto
-    assert '<h2 class="text-primary">3</h2>' in html   # ativos
-    assert '<h2 class="text-danger">2</h2>' in html    # inadimplentes
-    assert '<h2 class="text-warning">3</h2>' in html   # mensalidades em atraso
+    # As métricas deixaram de ser <h2> (números não são títulos de seção) e
+    # passaram a <p class="h2 ...">, mantendo o tamanho visual pela classe.
+    # .text-warning saiu do texto por contraste (1,63:1) → .texto-atencao.
+    assert '<p class="h2 text-primary mb-0">3</p>' in html   # ativos
+    assert '<p class="h2 text-danger mb-0">2</p>' in html    # inadimplentes
+    assert '<p class="h2 texto-atencao mb-0">3</p>' in html  # mensalidades em atraso
     # alunos que pedem atenção: Bruno (alto) antes de Carla (médio); Ana e Diego fora
     assert html.index('Bruno Costa') < html.index('Carla Souza')
     assert 'Ana Silva' not in html.split('Alunos que pedem atenção')[1]
@@ -165,8 +168,8 @@ def test_get_recalcula_pendente_vencida_para_em_atraso(dados, app, client):
         m_id = m.id
     logar_gestora(client)
     html = texto(client.get('/dashboard'))
-    assert '<h2 class="text-warning">4</h2>' in html
-    assert '<h2 class="text-danger">3</h2>' in html   # Ana virou inadimplente
+    assert '<p class="h2 texto-atencao mb-0">4</p>' in html
+    assert '<p class="h2 text-danger mb-0">3</p>' in html   # Ana virou inadimplente
     with app.app_context():
         assert db.session.get(Mensalidade, m_id).status == 'em atraso'
 

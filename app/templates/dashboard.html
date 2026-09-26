@@ -1,25 +1,52 @@
 {% extends 'base.html' %}
 
-{% block title %}Painel Gerencial{% endblock %}
+{% block title %}{{ 'Painel Gerencial' if current_user.papel == 'gestora' else 'Meu Painel' }}{% endblock %}
 
-{% block content %}
+{% block style %}
 <style>
     .card-metric { transition: transform 0.3s ease; }
     .card-metric:hover { transform: scale(1.05); }
-    .metric-icon { opacity: 0.7; }
-</style>
+    /* 0.7 de opacidade reduzia o contraste do ícone; 0.85 mantém o efeito
+       discreto sem apagá-lo. */
+    .metric-icon { opacity: 0.85; }
 
+    /* .text-warning do Bootstrap (#ffc107) tem 1,63:1 sobre branco e não serve
+       para texto. Este tom fica em 5,54:1 e mantém a leitura de "atenção". */
+    .texto-atencao { color: #8a6100; }
+
+    @media (prefers-reduced-motion: reduce) {
+        .card-metric { transition: none; }
+        .card-metric:hover { transform: none; }
+    }
+
+    /* Container de altura fixa para cada gráfico. Sem isso, um canvas
+       responsivo (responsive:true + maintainAspectRatio:false) mede o pai,
+       redesenha, empurra o pai e remede — um laço que faz o gráfico "escorregar"
+       e crescer até sumir. A altura fixa + position:relative quebram o laço. */
+    .grafico-container {
+        position: relative;
+        height: 260px;
+        width: 100%;
+    }
+    .grafico-container > canvas {
+        position: absolute;
+        inset: 0;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
 {# A professora vê os mesmos indicadores da gestora, porém só dos alunos dela
    e sem nada do financeiro da escola (decisão da direção, 22/09/2026). #}
 {% set gestora = current_user.papel == 'gestora' %}
 <div class="container-fluid dashboard-container">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
-            <h2 class="mb-0">{{ 'Painel Gerencial' if gestora else 'Meu Painel' }}</h2>
+            <h1 class="h2 mb-0">{{ 'Painel Gerencial' if gestora else 'Meu Painel' }}</h1>
             <p class="text-muted mb-0">{% if gestora %}Acompanhe alunos, recebimentos e o risco de evasão.{% else %}Seus alunos: presença, horários e risco de evasão.{% endif %}</p>
         </div>
-        {% if current_user.papel == 'gestora' %}
-        <a href="{{ url_for('alunos') }}" class="btn btn-primary" onclick="mostrarSpinner()"><i class="fas fa-plus me-1"></i>Novo aluno</a>
+        {% if gestora %}
+        <a href="{{ url_for('alunos') }}" class="btn btn-primary" onclick="mostrarSpinner()"><i class="fas fa-plus me-1" aria-hidden="true"></i>Novo aluno</a>
         {% endif %}
     </div>
 
@@ -28,9 +55,9 @@
         <div class="{{ 'col-md-3' if gestora else 'col-md-4' }}">
             <div class="card card-metric shadow-sm">
                 <div class="card-body text-center">
-                    <div class="metric-icon text-primary mb-3"><i class="fas fa-users fa-3x"></i></div>
-                    <h5>{{ 'Alunos ativos' if gestora else 'Meus alunos ativos' }}</h5>
-                    <h2 class="text-primary">{{ total_alunos }}</h2>
+                    <div class="metric-icon text-primary mb-3"><i class="fas fa-users fa-3x" aria-hidden="true"></i></div>
+                    <h2 class="h5">{{ 'Alunos ativos' if gestora else 'Meus alunos ativos' }}</h2>
+                    <p class="h2 text-primary mb-0">{{ total_alunos }}</p>
                 </div>
             </div>
         </div>
@@ -38,28 +65,28 @@
         <div class="col-md-3">
             <div class="card card-metric shadow-sm">
                 <div class="card-body text-center">
-                    <div class="metric-icon text-danger mb-3"><i class="fas fa-user-clock fa-3x"></i></div>
-                    <h5>Inadimplentes</h5>
-                    <h2 class="text-danger">{{ inadimplentes }}</h2>
+                    <div class="metric-icon text-danger mb-3"><i class="fas fa-user-clock fa-3x" aria-hidden="true"></i></div>
+                    <h2 class="h5">Inadimplentes</h2>
+                    <p class="h2 text-danger mb-0">{{ inadimplentes }}</p>
                 </div>
             </div>
         </div>
         <div class="col-md-3">
             <div class="card card-metric shadow-sm">
                 <div class="card-body text-center">
-                    <div class="metric-icon text-warning mb-3"><i class="fas fa-clock fa-3x"></i></div>
-                    <h5>Mensalidades em atraso</h5>
-                    <h2 class="text-warning">{{ total_atrasadas }}</h2>
+                    <div class="metric-icon mb-3" style="color:#8a6100;"><i class="fas fa-clock fa-3x" aria-hidden="true"></i></div>
+                    <h2 class="h5">Mensalidades em atraso</h2>
+                    <p class="h2 texto-atencao mb-0">{{ total_atrasadas }}</p>
                 </div>
             </div>
         </div>
         <div class="col-md-3">
             <div class="card card-metric shadow-sm">
                 <div class="card-body text-center">
-                    <div class="metric-icon text-success mb-3"><i class="fas fa-coins fa-3x"></i></div>
-                    <h5>Recebido / previsto</h5>
-                    <h4 class="text-success">R$ {{ total_recebido|moeda }}
-                        <small class="text-muted">/ {{ total_previsto|moeda }}</small></h4>
+                    <div class="metric-icon text-success mb-3"><i class="fas fa-coins fa-3x" aria-hidden="true"></i></div>
+                    <h2 class="h5">Recebido / previsto</h2>
+                    <p class="h4 text-success mb-0">R$ {{ total_recebido|moeda }}
+                        <small class="text-muted">/ {{ total_previsto|moeda }}</small></p>
                 </div>
             </div>
         </div>
@@ -68,18 +95,18 @@
         <div class="col-md-4">
             <div class="card card-metric shadow-sm">
                 <div class="card-body text-center">
-                    <div class="metric-icon text-success mb-3"><i class="fas fa-clipboard-check fa-3x"></i></div>
-                    <h5>Aulas registradas</h5>
-                    <h2 class="text-success">{{ aulas_dia_semana.aulas|sum }}</h2>
+                    <div class="metric-icon text-success mb-3"><i class="fas fa-clipboard-check fa-3x" aria-hidden="true"></i></div>
+                    <h2 class="h5">Aulas registradas</h2>
+                    <p class="h2 text-success mb-0">{{ aulas_dia_semana.aulas|sum }}</p>
                 </div>
             </div>
         </div>
         <div class="col-md-4">
             <div class="card card-metric shadow-sm">
                 <div class="card-body text-center">
-                    <div class="metric-icon text-danger mb-3"><i class="fas fa-user-slash fa-3x"></i></div>
-                    <h5>Faltas registradas</h5>
-                    <h2 class="text-danger">{{ aulas_dia_semana.faltas|sum }}</h2>
+                    <div class="metric-icon text-danger mb-3"><i class="fas fa-user-slash fa-3x" aria-hidden="true"></i></div>
+                    <h2 class="h5">Faltas registradas</h2>
+                    <p class="h2 text-danger mb-0">{{ aulas_dia_semana.faltas|sum }}</p>
                 </div>
             </div>
         </div>
@@ -91,21 +118,95 @@
         {% if gestora %}
         <div class="col-md-4">
             <div class="card shadow-sm border-0 h-100">
-                <div class="card-header bg-white py-3"><h5 class="mb-0"><i class="fas fa-chart-bar me-2 text-primary"></i>Situação financeira</h5></div>
-                <div class="card-body"><canvas id="financeiroChart" height="250"></canvas></div>
+                <div class="card-header bg-white py-3"><h2 class="h5 mb-0"><i class="fas fa-chart-bar me-2 text-primary" aria-hidden="true"></i>Situação financeira</h2></div>
+                <div class="card-body">
+                    <figure class="mb-0">
+                        <div class="grafico-container">
+                        <canvas id="financeiroChart" role="img"
+                                aria-label="Gráfico de barras com {{ adimplentes }} aluno(s) adimplente(s) e {{ inadimplentes }} inadimplente(s). Os mesmos números estão na tabela abaixo."
+                                aria-describedby="desc-financeiro"></canvas>
+                        </div>
+                        <figcaption class="mt-2">
+                            <p class="visually-hidden" id="desc-financeiro">{{ descricoes.financeiro }}</p>
+                            <details>
+                                <summary>Ver dados em tabela</summary>
+                                <table class="table table-sm mt-2 mb-0">
+                                    <caption class="visually-hidden">Alunos ativos por situação financeira</caption>
+                                    <thead><tr><th scope="col">Situação</th><th scope="col" class="text-end">Alunos</th></tr></thead>
+                                    <tbody>
+                                        <tr><th scope="row" class="fw-normal">Adimplentes</th><td class="text-end">{{ adimplentes }}</td></tr>
+                                        <tr><th scope="row" class="fw-normal">Inadimplentes</th><td class="text-end">{{ inadimplentes }}</td></tr>
+                                    </tbody>
+                                </table>
+                            </details>
+                        </figcaption>
+                    </figure>
+                </div>
             </div>
         </div>
         <div class="col-md-4">
             <div class="card shadow-sm border-0 h-100">
-                <div class="card-header bg-white py-3"><h5 class="mb-0"><i class="fas fa-chart-line me-2 text-success"></i>Recebido - últimos 6 meses</h5></div>
-                <div class="card-body"><canvas id="recebidoChart" height="250"></canvas></div>
+                <div class="card-header bg-white py-3"><h2 class="h5 mb-0"><i class="fas fa-chart-line me-2 text-success" aria-hidden="true"></i>Recebido - últimos 6 meses</h2></div>
+                <div class="card-body">
+                    <figure class="mb-0">
+                        <div class="grafico-container">
+                        <canvas id="recebidoChart" role="img"
+                                aria-label="Gráfico de linha com o valor recebido em cada um dos últimos 6 meses. Os valores exatos estão na tabela abaixo."
+                                aria-describedby="desc-recebido"></canvas>
+                        </div>
+                        <figcaption class="mt-2">
+                            <p class="visually-hidden" id="desc-recebido">{{ descricoes.recebido }}</p>
+                            <details>
+                                <summary>Ver dados em tabela</summary>
+                                <table class="table table-sm mt-2 mb-0">
+                                    <caption class="visually-hidden">Valor recebido por mês de competência, nos últimos 6 meses</caption>
+                                    <thead><tr><th scope="col">Mês</th><th scope="col" class="text-end">Recebido</th></tr></thead>
+                                    <tbody>
+                                        {% for mes in dados_recebido.meses %}
+                                        <tr><th scope="row" class="fw-normal">{{ mes }}</th><td class="text-end">R$ {{ dados_recebido.valores[loop.index0]|moeda }}</td></tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </details>
+                        </figcaption>
+                    </figure>
+                </div>
             </div>
         </div>
         {% endif %}
         <div class="{{ 'col-md-4' if gestora else 'col-md-6' }}">
             <div class="card shadow-sm border-0 h-100">
-                <div class="card-header bg-white py-3"><h5 class="mb-0"><i class="fas fa-chart-pie me-2 text-warning"></i>Alunos por instrumento</h5></div>
-                <div class="card-body"><canvas id="instrumentoChart" height="250"></canvas></div>
+                <div class="card-header bg-white py-3"><h2 class="h5 mb-0"><i class="fas fa-chart-pie me-2 text-warning" aria-hidden="true"></i>Alunos por instrumento</h2></div>
+                <div class="card-body">
+                    {% if dados_instrumentos.nomes %}
+                    <figure class="mb-0">
+                        {% if gestora %}
+                        <div class="grafico-container">
+                        <canvas id="instrumentoChart" role="img"
+                                aria-label="Gráfico de pizza com a distribuição de alunos entre {{ dados_instrumentos.nomes|length }} instrumento(s). A contagem por instrumento está na tabela abaixo."
+                                aria-describedby="desc-instrumento"></canvas>
+                        </div>
+                        {% endif %}
+                        <figcaption class="mt-2">
+                            <p class="visually-hidden" id="desc-instrumento">{{ descricoes.instrumento }}</p>
+                            <details {% if not gestora %}open{% endif %}>
+                                <summary>Ver dados em tabela</summary>
+                                <table class="table table-sm mt-2 mb-0">
+                                    <caption class="visually-hidden">Quantidade de alunos por instrumento</caption>
+                                    <thead><tr><th scope="col">Instrumento</th><th scope="col" class="text-end">Alunos</th></tr></thead>
+                                    <tbody>
+                                        {% for nome in dados_instrumentos.nomes %}
+                                        <tr><th scope="row" class="fw-normal">{{ nome }}</th><td class="text-end">{{ dados_instrumentos.valores[loop.index0] }}</td></tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </details>
+                        </figcaption>
+                    </figure>
+                    {% else %}
+                    <p class="text-center text-muted mb-0">Nenhum aluno vinculado a instrumentos ainda.</p>
+                    {% endif %}
+                </div>
             </div>
         </div>
     {% if gestora %}
@@ -116,27 +217,53 @@
     {% endif %}
         <div class="{{ 'col-md-4' if gestora else 'col-md-6' }}">
             <div class="card shadow-sm border-0 h-100">
-                <div class="card-header bg-white py-3"><h5 class="mb-0"><i class="fas fa-shield-heart me-2 text-danger"></i>Risco de evasão</h5></div>
-                <div class="card-body"><canvas id="riscoChart" height="250"></canvas></div>
+                <div class="card-header bg-white py-3"><h2 class="h5 mb-0"><i class="fas fa-shield-heart me-2 text-danger" aria-hidden="true"></i>Risco de evasão</h2></div>
+                <div class="card-body">
+                    <figure class="mb-0">
+                        {% if gestora %}
+                        <div class="grafico-container">
+                        <canvas id="riscoChart" role="img"
+                                aria-label="Gráfico de barras com a quantidade de alunos por nível de risco de evasão: {{ riscos['baixo'] }} baixo, {{ riscos['médio'] }} médio e {{ riscos['alto'] }} alto."
+                                aria-describedby="desc-risco"></canvas>
+                        </div>
+                        {% endif %}
+                        <figcaption class="mt-2">
+                            <p class="visually-hidden" id="desc-risco">{{ descricoes.risco }}</p>
+                            <details {% if not gestora %}open{% endif %}>
+                                <summary>Ver dados em tabela</summary>
+                                <table class="table table-sm mt-2 mb-0">
+                                    <caption class="visually-hidden">Alunos por nível de risco de evasão</caption>
+                                    <thead><tr><th scope="col">Risco</th><th scope="col" class="text-end">Alunos</th></tr></thead>
+                                    <tbody>
+                                        <tr><th scope="row" class="fw-normal">Baixo</th><td class="text-end">{{ riscos['baixo'] }}</td></tr>
+                                        <tr><th scope="row" class="fw-normal">Médio</th><td class="text-end">{{ riscos['médio'] }}</td></tr>
+                                        <tr><th scope="row" class="fw-normal">Alto</th><td class="text-end">{{ riscos['alto'] }}</td></tr>
+                                    </tbody>
+                                </table>
+                            </details>
+                        </figcaption>
+                    </figure>
+                </div>
             </div>
         </div>
         {% if gestora %}
         <div class="col-md-8">
             <div class="card shadow-sm border-0 h-100">
                 <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0"><i class="fas fa-triangle-exclamation me-2 text-warning"></i>Alunos que pedem atenção</h5>
+                    <h2 class="h5 mb-0"><i class="fas fa-triangle-exclamation me-2 texto-atencao" aria-hidden="true"></i>Alunos que pedem atenção</h2>
                     <a href="{{ url_for('alunos') }}" class="small" onclick="mostrarSpinner()">Ver todos</a>
                 </div>
                 <div class="card-body p-0">
-                    <div class="table-responsive">
+                    <div class="table-responsive" tabindex="0">
                         <table class="table table-hover mb-0" id="tabelaAtencao" data-por-pagina="{{ atencao_por_pagina }}">
+                            <caption class="visually-hidden">Alunos com risco médio ou alto, com instrumento, situação financeira, fatores de risco e nível de risco</caption>
                             <thead class="table-light">
-                                <tr><th>Aluno</th><th>Instrumento</th><th>Situação</th><th>Fatores</th><th>Risco</th></tr>
+                                <tr><th scope="col">Aluno</th><th scope="col">Instrumento</th><th scope="col">Situação</th><th scope="col">Fatores</th><th scope="col">Risco</th></tr>
                             </thead>
                             <tbody>
                                 {% for aluno in alunos_atencao %}
                                 <tr data-pagina="{{ loop.index0 // atencao_por_pagina }}">
-                                    <td><a href="{{ url_for('aluno_detalhe', id=aluno.id) }}" onclick="mostrarSpinner()">{{ aluno.nome }}</a></td>
+                                    <th scope="row" class="fw-normal"><a href="{{ url_for('aluno_detalhe', id=aluno.id) }}" onclick="mostrarSpinner()">{{ aluno.nome }}</a></th>
                                     <td>{{ aluno.instrumento.nome }}</td>
                                     <td>{% if aluno.inadimplente %}<span class="inadimplente">Inadimplente</span>{% else %}<span class="adimplente">Adimplente</span>{% endif %}</td>
                                     <td class="small text-muted">{{ aluno.risco_motivos|join('; ') }}</td>
@@ -151,7 +278,7 @@
                 </div>
                 {% if alunos_atencao|length > atencao_por_pagina %}
                 <div class="card-footer bg-white d-flex justify-content-between align-items-center flex-wrap gap-2 small" id="paginacaoAtencao">
-                    <span class="text-muted" id="paginacaoAtencaoInfo"></span>
+                    <span class="text-muted" id="paginacaoAtencaoInfo" aria-live="polite"></span>
                     <nav aria-label="Páginas dos alunos que pedem atenção"><ul class="pagination pagination-sm mb-0" id="paginacaoAtencaoLinks"></ul></nav>
                 </div>
                 {% endif %}
@@ -164,21 +291,51 @@
     <div class="row g-3 mt-1">
         <div class="col-md-4">
             <div class="card shadow-sm border-0 h-100">
-                <div class="card-header bg-white py-3"><h5 class="mb-0"><i class="fas fa-clipboard-check me-2 text-success"></i>Presença por instrumento</h5></div>
-                <div class="card-body"><canvas id="presencaChart" height="250"></canvas></div>
+                <div class="card-header bg-white py-3"><h2 class="h5 mb-0"><i class="fas fa-clipboard-check me-2 text-success" aria-hidden="true"></i>Presença por instrumento</h2></div>
+                <div class="card-body">
+                    {% if presenca_instrumento %}
+                    <figure class="mb-0">
+                        {% if gestora %}
+                        <div class="grafico-container">
+                        <canvas id="presencaChart" role="img"
+                                aria-label="Gráfico de barras horizontais com a taxa de presença por instrumento, da maior para a menor. Os percentuais e as faltas estão na tabela abaixo."
+                                aria-describedby="desc-presenca"></canvas>
+                        </div>
+                        {% endif %}
+                        <figcaption class="mt-2">
+                            <p class="visually-hidden" id="desc-presenca">{{ descricoes.presenca }}</p>
+                            <details {% if not gestora %}open{% endif %}>
+                                <summary>Ver dados em tabela</summary>
+                                <table class="table table-sm mt-2 mb-0">
+                                    <caption class="visually-hidden">Taxa de presença por instrumento</caption>
+                                    <thead><tr><th scope="col">Instrumento</th><th scope="col" class="text-end">Presença</th></tr></thead>
+                                    <tbody>
+                                        {% for r in presenca_instrumento %}
+                                        <tr><th scope="row" class="fw-normal">{{ r.instrumento }}</th><td class="text-end">{{ (100 * r.taxa)|round|int }}%</td></tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </details>
+                        </figcaption>
+                    </figure>
+                    {% else %}
+                    <p class="text-center text-muted mb-0">Nenhuma aula com presença registrada ainda.</p>
+                    {% endif %}
+                </div>
             </div>
         </div>
         <div class="col-md-4">
             <div class="card shadow-sm border-0 h-100">
-                <div class="card-header bg-white py-3"><h5 class="mb-0"><i class="fas fa-user-slash me-2 text-danger"></i>Alunos com mais faltas</h5></div>
+                <div class="card-header bg-white py-3"><h2 class="h5 mb-0"><i class="fas fa-user-slash me-2 text-danger" aria-hidden="true"></i>Alunos com mais faltas</h2></div>
                 <div class="card-body p-0">
-                    <div class="table-responsive">
+                    <div class="table-responsive" tabindex="0">
                         <table class="table table-sm table-hover mb-0" id="tabelaFaltosos">
-                            <thead class="table-light"><tr><th>Aluno</th><th class="text-end">Faltas</th><th class="text-end">Presença</th></tr></thead>
+                            <caption class="visually-hidden">Alunos com mais faltas, com número de faltas e taxa de presença</caption>
+                            <thead class="table-light"><tr><th scope="col">Aluno</th><th scope="col" class="text-end">Faltas</th><th scope="col" class="text-end">Presença</th></tr></thead>
                             <tbody>
                                 {% for f in faltosos %}
                                 <tr>
-                                    <td><a href="{{ url_for('aluno_detalhe', id=f.id) }}" onclick="mostrarSpinner()">{{ f.nome }}</a> <span class="text-muted small">{{ f.instrumento }}</span></td>
+                                    <th scope="row" class="fw-normal"><a href="{{ url_for('aluno_detalhe', id=f.id) }}" onclick="mostrarSpinner()">{{ f.nome }}</a> <span class="text-muted small">{{ f.instrumento }}</span></th>
                                     <td class="text-end">{{ f.faltas }} <span class="text-muted small">/ {{ f.presencas + f.faltas }}</span></td>
                                     <td class="text-end"><span class="badge text-bg-{{ 'danger' if f.taxa < 0.6 else 'warning' if f.taxa < 0.8 else 'success' }}">{{ (100 * f.taxa)|round|int }}%</span></td>
                                 </tr>
@@ -193,8 +350,33 @@
         </div>
         <div class="col-md-4">
             <div class="card shadow-sm border-0 h-100">
-                <div class="card-header bg-white py-3"><h5 class="mb-0"><i class="fas fa-calendar-week me-2 text-primary"></i>Aulas por dia da semana</h5></div>
-                <div class="card-body"><canvas id="diaSemanaChart" height="250"></canvas></div>
+                <div class="card-header bg-white py-3"><h2 class="h5 mb-0"><i class="fas fa-calendar-week me-2 text-primary" aria-hidden="true"></i>Aulas por dia da semana</h2></div>
+                <div class="card-body">
+                    <figure class="mb-0">
+                        {% if gestora %}
+                        <div class="grafico-container">
+                        <canvas id="diaSemanaChart" role="img"
+                                aria-label="Gráfico de barras com o número de aulas e de faltas em cada dia da semana. Os números estão na tabela abaixo."
+                                aria-describedby="desc-dia-semana"></canvas>
+                        </div>
+                        {% endif %}
+                        <figcaption class="mt-2">
+                            <p class="visually-hidden" id="desc-dia-semana">{{ descricoes.dia_semana }}</p>
+                            <details {% if not gestora %}open{% endif %}>
+                                <summary>Ver dados em tabela</summary>
+                                <table class="table table-sm mt-2 mb-0">
+                                    <caption class="visually-hidden">Aulas e faltas por dia da semana</caption>
+                                    <thead><tr><th scope="col">Dia</th><th scope="col" class="text-end">Aulas</th><th scope="col" class="text-end">Faltas</th></tr></thead>
+                                    <tbody>
+                                        {% for dia in aulas_dia_semana.dias %}
+                                        <tr><th scope="row" class="fw-normal">{{ dia }}</th><td class="text-end">{{ aulas_dia_semana.aulas[loop.index0] }}</td><td class="text-end">{{ aulas_dia_semana.faltas[loop.index0] }}</td></tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </details>
+                        </figcaption>
+                    </figure>
+                </div>
             </div>
         </div>
     </div>
@@ -204,7 +386,7 @@
         <div class="col-12">
             <div class="card shadow-sm border-0">
                 <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap">
-                    <h5 class="mb-0"><i class="fas fa-table-cells me-2 text-info"></i>Ocupação de horários</h5>
+                    <h2 class="h5 mb-0"><i class="fas fa-table-cells me-2 text-info" aria-hidden="true"></i>Ocupação de horários</h2>
                     <span class="small text-muted">
                         {{ ocupacao.com_horario }} aluno(s) ativo(s) com horário definido
                         {% if ocupacao.sem_horario %} · {{ ocupacao.sem_horario }} sem dia/hora cadastrado{% endif %}
@@ -213,19 +395,20 @@
                 </div>
                 <div class="card-body p-0">
                     {% if ocupacao.horas %}
-                    <div class="table-responsive">
+                    <div class="table-responsive" tabindex="0">
                         <table class="table table-bordered text-center mb-0 align-middle" id="tabelaOcupacao">
+                            <caption class="visually-hidden">Ocupação de horários: número de alunos ativos por dia da semana e hora da aula</caption>
                             <thead class="table-light">
-                                <tr><th class="text-start">Hora</th>{% for d in ocupacao.dias %}<th>{{ d }}</th>{% endfor %}</tr>
+                                <tr><th scope="col" class="text-start">Hora</th>{% for d in ocupacao.dias %}<th scope="col">{{ d }}</th>{% endfor %}</tr>
                             </thead>
                             <tbody>
                                 {% for hora in ocupacao.horas %}
                                 {% set i = loop.index0 %}
                                 <tr>
-                                    <th class="text-start">{{ hora }}</th>
+                                    <th scope="row" class="text-start">{{ hora }}</th>
                                     {% for n in ocupacao.celulas[i] %}
                                     {% set t = ocupacao.intensidade[i][loop.index0] %}
-                                    <td style="background: rgba(54, 162, 235, {{ (0.08 + 0.72 * t)|round(2) if n else 0 }});{% if t > 0.6 %} color:#fff; font-weight:600;{% endif %}">
+                                    <td style="background: rgba(54, 162, 235, {{ (0.08 + 0.72 * t)|round(2) if n else 0 }});{% if t > 0.6 %} color:#0b2e4f; font-weight:600;{% endif %}">
                                         {% if n %}{{ n }}{% if ocupacao.vagas %}<span class="small opacity-75"> / {{ ocupacao.vagas }}</span>{% endif %}{% else %}<span class="text-muted">—</span>{% endif %}
                                     </td>
                                     {% endfor %}
@@ -251,6 +434,12 @@ document.addEventListener('DOMContentLoaded', function() {
     const riscos = {{ riscos|tojson }};
     {% if current_user.papel == 'gestora' %}const dadosRecebido = {{ dados_recebido|tojson }};{% endif %}
 
+    // Requisito de movimento: quem pede menos movimento no sistema operacional
+    // não recebe a animação de entrada dos gráficos. O @media CSS não alcança
+    // <canvas> — a decisão tem de ser em JS, na criação de cada gráfico.
+    const reduzirMovimento = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const semAnimacao = reduzirMovimento ? { animation: false } : {};
+
     {% if current_user.papel == 'gestora' %}
     // Gráfico 1: Situação financeira (barras)
     new Chart(document.getElementById('financeiroChart').getContext('2d'), {
@@ -262,7 +451,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 { label: 'Inadimplentes', data: [{{ inadimplentes }}], backgroundColor: 'rgba(255, 99, 132, 0.6)', borderColor: 'rgba(255, 99, 132, 1)', borderWidth: 1 }
             ]
         },
-        options: { responsive: true, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+        options: { responsive: true, maintainAspectRatio: false, ...semAnimacao, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
     });
 
     // Gráfico 2: Recebido nos últimos 6 meses (linha)
@@ -273,38 +462,33 @@ document.addEventListener('DOMContentLoaded', function() {
             datasets: [{ label: 'Recebido', data: dadosRecebido.valores,
                 borderColor: 'rgba(54, 162, 235, 0.8)', backgroundColor: 'rgba(54, 162, 235, 0.2)', tension: 0.3, fill: true }]
         },
-        options: { responsive: true, scales: { y: { ticks: { callback: function(v){ return 'R$ ' + v.toFixed(2); } } } } }
+        options: { responsive: true, maintainAspectRatio: false, ...semAnimacao, scales: { y: { ticks: { callback: function(v){ return 'R$ ' + v.toFixed(2); } } } } }
     });
     {% endif %}
 
     // Gráfico 3: Alunos por instrumento (pizza)
     const backgroundColors = ['rgba(255, 99, 132, 0.8)','rgba(54, 162, 235, 0.8)','rgba(255, 206, 86, 0.8)','rgba(75, 192, 192, 0.8)','rgba(153, 102, 255, 0.8)','rgba(255, 159, 64, 0.8)','rgba(199, 199, 199, 0.8)','rgba(83, 102, 255, 0.8)','rgba(78, 205, 196, 0.8)','rgba(255, 99, 71, 0.8)'];
-    if (dadosInstrumentos.nomes.length === 0) {
-        const c = document.getElementById('instrumentoChart'); const ctx = c.getContext('2d');
-        ctx.font = '16px Arial'; ctx.textAlign = 'center'; ctx.fillStyle = '#6c757d';
-        ctx.fillText('Sem dados', c.width/2, c.height/2);
-    } else {
+    // Sem dados o canvas não é renderizado: o template mostra um parágrafo.
+    if (document.getElementById('instrumentoChart')) {
         new Chart(document.getElementById('instrumentoChart').getContext('2d'), {
             type: 'pie',
             data: { labels: dadosInstrumentos.nomes, datasets: [{ data: dadosInstrumentos.valores, backgroundColor: backgroundColors.slice(0, dadosInstrumentos.nomes.length) }] },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { boxWidth: 15, padding: 15 } } } }
+            options: { responsive: true, maintainAspectRatio: false, ...semAnimacao, plugins: { legend: { position: 'bottom', labels: { boxWidth: 15, padding: 15 } } } }
         });
     }
 
-    // Gráfico 4: Risco de evasão (barras)
-    new Chart(document.getElementById('riscoChart').getContext('2d'), {
-        type: 'bar',
-        data: { labels: ['Baixo','Médio','Alto'], datasets: [{ label: 'Alunos', data: [riscos['baixo'], riscos['médio'], riscos['alto']], backgroundColor: ['#52b788','#f0b84b','#e76f51'] }] },
-        options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
-    });
+    // Gráfico 4: Risco de evasão (barras) — só existe para a gestora
+    if (document.getElementById('riscoChart')) {
+        new Chart(document.getElementById('riscoChart').getContext('2d'), {
+            type: 'bar',
+            data: { labels: ['Baixo','Médio','Alto'], datasets: [{ label: 'Alunos', data: [riscos['baixo'], riscos['médio'], riscos['alto']], backgroundColor: ['#52b788','#f0b84b','#e76f51'] }] },
+            options: { responsive: true, maintainAspectRatio: false, ...semAnimacao, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+        });
+    }
 
     // Gráfico 5: Presença por instrumento (barras horizontais, % de presença)
     const presencaInstrumento = {{ presenca_instrumento|tojson }};
-    if (presencaInstrumento.length === 0) {
-        const c = document.getElementById('presencaChart'); const ctx = c.getContext('2d');
-        ctx.font = '16px Arial'; ctx.textAlign = 'center'; ctx.fillStyle = '#6c757d';
-        ctx.fillText('Sem presença registrada', c.width/2, c.height/2);
-    } else {
+    if (document.getElementById('presencaChart')) {
         new Chart(document.getElementById('presencaChart').getContext('2d'), {
             type: 'bar',
             data: {
@@ -312,7 +496,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 datasets: [{ label: 'Presença (%)', data: presencaInstrumento.map(r => Math.round(100 * r.taxa)),
                     backgroundColor: presencaInstrumento.map(r => r.taxa >= 0.8 ? '#52b788' : r.taxa >= 0.6 ? '#f0b84b' : '#e76f51') }]
             },
-            options: { indexAxis: 'y', responsive: true, plugins: { legend: { display: false },
+            options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, ...semAnimacao, plugins: { legend: { display: false },
                 tooltip: { callbacks: { label: function(ctx) { const r = presencaInstrumento[ctx.dataIndex];
                     return ctx.parsed.x + '% · ' + r.alunos + ' aluno(s), ' + r.aulas + ' aula(s), ' + r.faltas + ' falta(s)'; } } } },
                 scales: { x: { min: 0, max: 100, ticks: { callback: v => v + '%' } } } }
@@ -335,36 +519,52 @@ document.addEventListener('DOMContentLoaded', function() {
             const ini = p * porPagina + 1, fim = Math.min(total, (p + 1) * porPagina);
             info.textContent = 'Mostrando ' + ini + '–' + fim + ' de ' + total + ' aluno(s)';
             linksAtencao.innerHTML = '';
+            // Item desabilitado vira <span>: controle sem destino não deve
+            // receber foco. O item atual é anunciado com aria-current="page".
             const item = (rotulo, alvo, opts) => {
                 const li = document.createElement('li');
                 li.className = 'page-item' + (opts.ativo ? ' active' : '') + (opts.desabilitado ? ' disabled' : '');
-                const a = document.createElement('a');
-                a.className = 'page-link'; a.href = '#'; a.textContent = rotulo;
-                if (opts.ariaLabel) a.setAttribute('aria-label', opts.ariaLabel);
-                a.addEventListener('click', ev => { ev.preventDefault(); if (!opts.desabilitado) mostrarPagina(alvo); });
-                li.appendChild(a); linksAtencao.appendChild(li);
+                if (opts.desabilitado) {
+                    const span = document.createElement('span');
+                    span.className = 'page-link';
+                    span.textContent = rotulo;
+                    span.setAttribute('aria-hidden', 'true');
+                    li.appendChild(span);
+                } else {
+                    const botao = document.createElement('button');
+                    botao.type = 'button';
+                    botao.className = 'page-link';
+                    botao.textContent = rotulo;
+                    botao.setAttribute('aria-label', opts.ariaLabel || ('Página ' + rotulo));
+                    if (opts.ativo) botao.setAttribute('aria-current', 'page');
+                    botao.addEventListener('click', () => mostrarPagina(alvo));
+                    li.appendChild(botao);
+                }
+                linksAtencao.appendChild(li);
             };
-            item('‹', p - 1, { desabilitado: p === 0, ariaLabel: 'Anterior' });
+            item('‹', p - 1, { desabilitado: p === 0, ariaLabel: 'Página anterior' });
             // janela de até 5 números em torno da página atual
             let de = Math.max(0, p - 2), ate = Math.min(paginas - 1, de + 4); de = Math.max(0, ate - 4);
             for (let i = de; i <= ate; i++) item(String(i + 1), i, { ativo: i === p });
-            item('›', p + 1, { desabilitado: p === paginas - 1, ariaLabel: 'Próxima' });
+            item('›', p + 1, { desabilitado: p === paginas - 1, ariaLabel: 'Próxima página' });
         }
         mostrarPagina(0);
     }
     {% endif %}
 
-    // Gráfico 6: Aulas e faltas por dia da semana
+    // Gráfico 6: Aulas e faltas por dia da semana — só existe para a gestora
     const diaSemana = {{ aulas_dia_semana|tojson }};
-    new Chart(document.getElementById('diaSemanaChart').getContext('2d'), {
-        type: 'bar',
-        data: { labels: diaSemana.dias.map(d => d.slice(0, 3)),
-            datasets: [
-                { label: 'Aulas', data: diaSemana.aulas, backgroundColor: 'rgba(54, 162, 235, 0.6)' },
-                { label: 'Faltas', data: diaSemana.faltas, backgroundColor: 'rgba(255, 99, 132, 0.6)' }
-            ] },
-        options: { responsive: true, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
-    });
+    if (document.getElementById('diaSemanaChart')) {
+        new Chart(document.getElementById('diaSemanaChart').getContext('2d'), {
+            type: 'bar',
+            data: { labels: diaSemana.dias.map(d => d.slice(0, 3)),
+                datasets: [
+                    { label: 'Aulas', data: diaSemana.aulas, backgroundColor: 'rgba(54, 162, 235, 0.6)' },
+                    { label: 'Faltas', data: diaSemana.faltas, backgroundColor: 'rgba(255, 99, 132, 0.6)' }
+                ] },
+            options: { responsive: true, maintainAspectRatio: false, ...semAnimacao, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+        });
+    }
 });
 </script>
 {% endblock %}

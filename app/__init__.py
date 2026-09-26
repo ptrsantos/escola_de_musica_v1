@@ -142,14 +142,24 @@ def create_app(config=None):
     # Token CSRF ausente ou inválido: em vez do erro 400 seco, avisa e volta.
     @app.errorhandler(CSRFError)
     def csrf_invalido(e):
-        flash('Sua sessão expirou ou o formulário é inválido. Tente novamente.', 'warning')
+        # A mensagem diz a causa e a ação necessária: "formulário inválido"
+        # sozinho não indica o que a pessoa deve fazer.
+        flash('Sua sessão expirou por inatividade e o envio foi cancelado por segurança. '
+              'Entre novamente e repita a operação.', 'warning')
         return redirect(request.referrer or url_for('home'))
 
     # Context processor para disponibilizar a data atual em todos os templates
     @app.context_processor
     def inject_now():
         from app.models import DIAS_SEMANA_PT
-        return {'now': datetime.now, 'DIAS_SEMANA_PT': DIAS_SEMANA_PT}
+        # DIAS_SEMANA_OPCOES: pares (valor, texto) prontos para a macro de
+        # <select> acessível (app/templates/_a11y.html). -1 = sem horário fixo,
+        # que parse_dia_semana() converte para None.
+        return {
+            'now': datetime.now,
+            'DIAS_SEMANA_PT': DIAS_SEMANA_PT,
+            'DIAS_SEMANA_OPCOES': [(-1, 'Sem horário fixo')] + list(enumerate(DIAS_SEMANA_PT)),
+        }
 
     # Filtro para formatar valores monetários no padrão brasileiro, com
     # separador de milhar e vírgula decimal (ex.: 1234.5 -> "1.234,50").

@@ -39,6 +39,109 @@ def parse_date(value):
     return datetime.strptime(value, '%Y-%m-%d').date() if value else None
 
 
+def _moeda_ptbr(valor):
+    """Espelha o filtro Jinja 'moeda' (ex.: 1234.5 -> '1.234,50') sem depender
+    de contexto de template — as descrições de tendência são montadas em
+    Python puro."""
+    return f'{float(valor or 0):,.2f}'.replace(',', 'X').replace('.', ',').replace('X', '.')
+
+
+def descricoes_tendencia(*, adimplentes, inadimplentes, dados_recebido,
+                         dados_instrumentos, riscos, presenca_instrumento,
+                         aulas_dia_semana):
+    """Descrições de tendência (Requisito 4) para leitores de tela.
+
+    Geradas dos MESMOS dados que alimentam os gráficos do dashboard, com o
+    dinheiro em pt-BR (igual ao filtro 'moeda') e os meses em MM/AAAA. Só
+    entram chaves de gráficos que de fato renderizam: 'instrumento' e
+    'presenca' ficam de fora quando não há dados (o template mostra texto
+    simples nesse caso).
+    """
+    desc = {}
+
+    total = adimplentes + inadimplentes
+    desc['financeiro'] = (
+        f'Situação financeira dos alunos ativos: {adimplentes} adimplente(s) '
+        f'e {inadimplentes} inadimplente(s), num total de {total}.'
+    )
+
+    meses = dados_recebido['meses']
+    valores = dados_recebido['valores']
+    if meses:
+        def rotulo(mes):  # '2026-03' -> '03/2026'
+            return f'{mes[5:7]}/{mes[:4]}'
+        partes = [f'{rotulo(m)}: R$ {_moeda_ptbr(v)}' for m, v in zip(meses, valores)]
+        texto = 'Recebido por mês de competência: ' + '; '.join(partes) + '.'
+        if len(valores) >= 2:
+            ult, penult = valores[-1], valores[-2]
+            if penult > 0:
+                if ult > penult:
+                    comparacao = (f'O último mês subiu em relação ao anterior '
+                                  f'(de R$ {_moeda_ptbr(penult)} para R$ {_moeda_ptbr(ult)}).')
+                elif ult < penult:
+                    comparacao = (f'O último mês caiu em relação ao anterior '
+                                  f'(de R$ {_moeda_ptbr(penult)} para R$ {_moeda_ptbr(ult)}).')
+                else:
+                    comparacao = (f'O último mês repetiu o valor do anterior '
+                                  f'(R$ {_moeda_ptbr(ult)}).')
+            elif ult > 0:
+                comparacao = ('O último mês é o primeiro com recebimento '
+                              'registrado no período.')
+            else:
+                comparacao = 'Nenhum recebimento registrado no período.'
+            texto += ' ' + comparacao
+        desc['recebido'] = texto
+
+    nomes = dados_instrumentos['nomes']
+    contagens = dados_instrumentos['valores']
+    if nomes:
+        pares = sorted(zip(nomes, contagens), key=lambda p: p[1], reverse=True)
+        top = pares[:3]
+        lista = '; '.join(f'{n}: {c}' for n, c in top)
+        if len(pares) > 3:
+            lista += f'; e mais {len(pares) - 3} instrumento(s)'
+        maior_n, maior_c = top[0]
+        desc['instrumento'] = (
+            f'Distribuição de {sum(contagens)} aluno(s) por instrumento: {lista}. '
+            f'Maior grupo: {maior_n} ({maior_c}).'
+        )
+
+    desc['risco'] = (
+        f'Risco de evasão entre os alunos ativos: {riscos["baixo"]} baixo, '
+        f'{riscos["médio"]} médio e {riscos["alto"]} alto.'
+    )
+
+    if presenca_instrumento:
+        # linhas já vêm ordenadas da maior taxa para a menor
+        def fmt(linha):
+            presentes = linha['aulas'] - linha['faltas']
+            return (f"{linha['instrumento']}: {round(100 * linha['taxa'])}% "
+                    f'({presentes} de {linha["aulas"]} aulas)')
+        texto = '; '.join(fmt(l) for l in presenca_instrumento[:3])
+        if len(presenca_instrumento) > 3:
+            texto += f'; e mais {len(presenca_instrumento) - 3} instrumento(s)'
+        desc['presenca'] = (
+            f'Taxa de presença por instrumento: {texto}. '
+            f"Melhor: {presenca_instrumento[0]['instrumento']}; "
+            f"pior: {presenca_instrumento[-1]['instrumento']}."
+        )
+
+    dias = aulas_dia_semana['dias']
+    if dias:
+        aulas = aulas_dia_semana['aulas']
+        faltas = aulas_dia_semana['faltas']
+        lista = '; '.join(f'{d}: {a} aula(s), {f} falta(s)'
+                          for d, a, f in zip(dias, aulas, faltas))
+        topo = max(zip(dias, aulas), key=lambda p: p[1])
+        desc['dia_semana'] = (
+            f'Aulas por dia da semana: {lista}. '
+            f'Dia com mais aulas: {topo[0]} ({topo[1]}). '
+            f'Total: {sum(aulas)} aula(s) e {sum(faltas)} falta(s).'
+        )
+
+    return desc
+
+
 def parse_hora(value):
     return datetime.strptime(value, '%H:%M').time() if value else None
 
@@ -110,6 +213,104 @@ def pode_ver_aluno(aluno_id, escopo=None):
         return True
     escopo = escopo if escopo is not None else ids_alunos_da_professora()
     return aluno_id in escopo
+
+
+# ---------------------------------------------------------------------------
+# Validação de formulários.
+#
+# Antes, erro de preenchimento virava um flash genérico e um redirect, o que
+# perdia o que a pessoa havia digitado e não dizia qual campo estava errado.
+# Agora cada erro é devolvido por campo (nome_do_campo -> mensagem), o template
+# reexibe o formulário com os valores preservados e associa a mensagem ao campo
+# por aria-describedby/aria-invalid.
+# ---------------------------------------------------------------------------
+RE_EMAIL = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
+
+
+def _texto(form, campo):
+    return (form.get(campo) or '').strip()
+
+
+def validar_aluno(form):
+    """(dados, erros) do formulário de aluno. ``dados`` só é usado se não houver
+    erros; nada é atribuído ao modelo antes da validação passar."""
+    erros, dados = {}, {}
+
+    nome = _texto(form, 'nome')
+    if len(nome) < 3:
+        erros['nome'] = 'Informe o nome completo, com ao menos 3 caracteres.'
+    dados['nome'] = nome
+
+    try:
+        dados['instrumento_id'] = int(form['instrumento_id'])
+    except (KeyError, ValueError):
+        erros['instrumento_id'] = 'Selecione o instrumento do aluno.'
+
+    bruto = _texto(form, 'mensalidade_base') or '0'
+    try:
+        valor = float(bruto.replace(',', '.'))
+        if valor < 0:
+            erros['mensalidade_base'] = 'A mensalidade não pode ser negativa.'
+        dados['mensalidade_base'] = valor
+    except ValueError:
+        erros['mensalidade_base'] = 'Informe a mensalidade em números, por exemplo 250,00.'
+
+    try:
+        dados['data_nascimento'] = parse_date(_texto(form, 'data_nascimento') or None)
+    except ValueError:
+        erros['data_nascimento'] = 'Informe a data de nascimento no formato dia/mês/ano.'
+
+    try:
+        dados['hora_aula'] = parse_hora(_texto(form, 'hora_aula') or None)
+    except ValueError:
+        erros['hora_aula'] = 'Informe o horário da aula no formato hora:minuto.'
+
+    email = _texto(form, 'email').lower()
+    if email and not RE_EMAIL.match(email):
+        erros['email'] = 'Informe um e-mail válido, por exemplo nome@dominio.com.'
+    dados['email'] = email or None
+
+    dados['endereco'] = _texto(form, 'endereco') or None
+    dados['dia_aula_semana'] = parse_dia_semana(form.get('dia_aula_semana'))
+    status = form.get('status', 'ativo')
+    dados['status'] = status if status in ('ativo', 'inativo') else 'ativo'
+    return dados, erros
+
+
+def validar_usuario(form, usuario=None, senha_obrigatoria=True):
+    """(dados, erros) do formulário de usuário. ``usuario`` é o registro em
+    edição, para que o próprio e-mail não conte como duplicado."""
+    erros, dados = {}, {}
+
+    nome = _texto(form, 'nome')
+    if not nome:
+        erros['nome'] = 'Informe o nome do usuário.'
+    dados['nome'] = nome
+
+    email = _texto(form, 'email').lower()
+    if not email:
+        erros['email'] = 'Informe o e-mail do usuário.'
+    elif not RE_EMAIL.match(email):
+        erros['email'] = 'Informe um e-mail válido, por exemplo nome@dominio.com.'
+    else:
+        consulta = Usuario.query.filter(Usuario.email == email)
+        if usuario is not None:
+            consulta = consulta.filter(Usuario.id != usuario.id)
+        if consulta.first():
+            erros['email'] = 'Já existe outro usuário com esse e-mail.'
+    dados['email'] = email
+
+    senha = form.get('senha') or ''
+    if senha_obrigatoria and not senha:
+        erros['senha'] = 'Defina uma senha com pelo menos 6 caracteres.'
+    elif senha and len(senha) < 6:
+        erros['senha'] = 'A senha precisa ter pelo menos 6 caracteres.'
+    dados['senha'] = senha
+
+    papeis_validos = (Usuario.PAPEL_GESTORA, Usuario.PAPEL_PROFESSORA, Usuario.PAPEL_ALUNO)
+    papel = form.get('papel') or (usuario.papel if usuario else Usuario.PAPEL_ALUNO)
+    dados['papel'] = papel if papel in papeis_validos else Usuario.PAPEL_ALUNO
+    return dados, erros
 
 
 def register_routes(app):
@@ -330,6 +531,20 @@ def register_routes(app):
             ocupacao=ocupacao,
         )
 
+        # Descrições de tendência (acessibilidade dos gráficos). Para a professora
+        # só há gráficos pedagógicos — os argumentos financeiros vão zerados e a
+        # descrição financeira/recebido simplesmente não é exibida no template
+        # dela (o template usa o flag `gestora`).
+        contexto['descricoes'] = descricoes_tendencia(
+            adimplentes=0,
+            inadimplentes=0,
+            dados_recebido={'meses': [], 'valores': []},
+            dados_instrumentos=dados_instrumentos,
+            riscos=riscos,
+            presenca_instrumento=pedagogico['por_instrumento'],
+            aulas_dia_semana=pedagogico['por_dia_semana'],
+        )
+
         if gestora:
             inadimplentes = sum(1 for a in alunos if a.inadimplente)
             total_atrasadas = db.session.scalar(
@@ -362,6 +577,17 @@ def register_routes(app):
                 alunos_atencao=sorted((a for a in alunos if a.risco != 'baixo'),
                                       key=lambda a: a.risco_score, reverse=True),
                 atencao_por_pagina=ATENCAO_POR_PAGINA,
+            )
+
+            # Descrições completas (com financeiro e recebido) para a gestora.
+            contexto['descricoes'] = descricoes_tendencia(
+                adimplentes=contexto['adimplentes'],
+                inadimplentes=inadimplentes,
+                dados_recebido=contexto['dados_recebido'],
+                dados_instrumentos=dados_instrumentos,
+                riscos=riscos,
+                presenca_instrumento=pedagogico['por_instrumento'],
+                aulas_dia_semana=pedagogico['por_dia_semana'],
             )
 
         return render_template('dashboard.html', **contexto)
@@ -411,52 +637,60 @@ def register_routes(app):
     # =================================================================
     # Alunos (equivalente às "transações"/"categorias" do original)
     # =================================================================
-    @app.route('/alunos')
-    @papeis_required('gestora', 'professora')
-    def alunos():
+    def contexto_alunos(busca='', **extra):
+        """Contexto da listagem de alunos, reaproveitado quando um formulário
+        volta com erro (em vez de redirecionar e perder o que foi digitado).
+        Respeita o escopo da professora (só os alunos dela)."""
         escopo = escopo_de_alunos()
         if escopo is None:
             atualizar_status_vencidos()
-        busca = (request.args.get('busca') or '').strip()
         consulta = Aluno.query.options(joinedload(Aluno.instrumento)).order_by(Aluno.nome)
         if escopo is not None:                 # professora: só os alunos dela
             consulta = consulta.filter(Aluno.id.in_(escopo))
         if busca:
             consulta = consulta.filter(Aluno.nome.ilike(f'%{busca}%'))
-        alunos = consulta.all()
-        pontuar(alunos)
-        return render_template(
-            'alunos.html',
-            alunos=alunos,
-            instrumentos=Instrumento.query.order_by(Instrumento.nome).all(),
-            busca=busca,
-        )
+        lista = consulta.all()
+        pontuar(lista)
+        return {
+            'alunos': lista,
+            'instrumentos': Instrumento.query.order_by(Instrumento.nome).all(),
+            'busca': busca,
+            **extra,
+        }
+
+    @app.route('/alunos')
+    @papeis_required('gestora', 'professora')
+    def alunos():
+        busca = (request.args.get('busca') or '').strip()
+        return render_template('alunos.html', **contexto_alunos(busca=busca))
 
     @app.route('/adicionar_aluno', methods=['POST'])
     @papeis_required('gestora')
     def adicionar_aluno():
+        dados, erros = validar_aluno(request.form)
+        if erros:
+            # Reexibe a página com o modal aberto, os valores preservados e cada
+            # mensagem ligada ao seu campo.
+            return render_template('alunos.html', **contexto_alunos(
+                erros=erros, valores=request.form, abrir_modal='novoAlunoModal'))
         try:
-            aluno = Aluno(
-                nome=request.form['nome'].strip(),
-                instrumento_id=int(request.form['instrumento_id']),
-                mensalidade_base=float(request.form.get('mensalidade_base') or 0),
-                data_nascimento=parse_date(request.form.get('data_nascimento')),
-                email=(request.form.get('email') or '').strip().lower() or None,
-                endereco=request.form.get('endereco'),
-                dia_aula_semana=parse_dia_semana(request.form.get('dia_aula_semana')),
-                hora_aula=parse_hora(request.form.get('hora_aula')),
-                status='ativo',
-            )
+            aluno = Aluno(**dados)
             db.session.add(aluno)
             db.session.commit()
             flash('Aluno cadastrado com sucesso!', 'success')
             return redirect(url_for('aluno_detalhe', id=aluno.id))
-        except (KeyError, ValueError):
-            flash('Preencha corretamente os campos obrigatórios (nome e instrumento).', 'danger')
         except Exception as e:
             db.session.rollback()
             flash(f'Erro ao cadastrar aluno: {str(e)}', 'danger')
-        return redirect(url_for('alunos'))
+            return redirect(url_for('alunos'))
+
+    def contexto_aluno(aluno, **extra):
+        return {
+            'aluno': aluno,
+            'instrumentos': Instrumento.query.order_by(Instrumento.nome).all(),
+            'presenca': resumo_presenca(aluno.aulas),
+            **extra,
+        }
 
     @app.route('/aluno/<int:id>')
     @login_required
@@ -472,28 +706,24 @@ def register_routes(app):
         # Professora só acessa a ficha dos alunos dela — inclusive pela URL
         if not pode_ver_aluno(aluno.id):
             abort(403)
-        instrumentos = Instrumento.query.order_by(Instrumento.nome).all()
-        return render_template('aluno_detalhe.html', aluno=aluno, instrumentos=instrumentos,
-                               presenca=resumo_presenca(aluno.aulas))
+        return render_template('aluno_detalhe.html', **contexto_aluno(aluno))
 
     @app.route('/editar_aluno/<int:id>', methods=['POST'])
     @papeis_required('gestora')
     def editar_aluno(id):
         aluno = db.get_or_404(Aluno, id)
+        dados, erros = validar_aluno(request.form)
+        if erros:
+            return render_template('aluno_detalhe.html', **contexto_aluno(
+                aluno, erros=erros, valores=request.form, abrir_modal='editarAlunoModal'))
         try:
-            aluno.nome = request.form['nome'].strip()
-            aluno.instrumento_id = int(request.form['instrumento_id'])
-            aluno.mensalidade_base = float(request.form.get('mensalidade_base') or 0)
-            aluno.data_nascimento = parse_date(request.form.get('data_nascimento'))
-            aluno.email = (request.form.get('email') or '').strip().lower() or None
-            aluno.endereco = request.form.get('endereco')
-            aluno.dia_aula_semana = parse_dia_semana(request.form.get('dia_aula_semana'))
-            aluno.hora_aula = parse_hora(request.form.get('hora_aula'))
-            aluno.status = request.form.get('status', 'ativo')
+            for atributo, valor in dados.items():
+                setattr(aluno, atributo, valor)
             db.session.commit()
             flash('Cadastro atualizado com sucesso!', 'success')
-        except (KeyError, ValueError):
-            flash('Dados inválidos.', 'danger')
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Erro ao atualizar o cadastro: {str(e)}', 'danger')
         return redirect(url_for('aluno_detalhe', id=aluno.id))
 
     @app.route('/excluir_aluno/<int:id>', methods=['POST'])
@@ -535,12 +765,37 @@ def register_routes(app):
             consulta = consulta.filter(Aluno.nome.ilike(f'%{busca}%'))
         paginacao = consulta.paginate(page=pagina, per_page=MENSALIDADES_POR_PAGINA, error_out=False)
 
+        # Requisito 8: um único modal de pagamentos no HTML, preenchido por
+        # JavaScript a partir deste JSON. Antes o template renderizava um
+        # modal por mensalidade — N diálogos invisíveis no DOM. O eager load
+        # acima (selectinload) traz os pagamentos sem consulta por linha.
+        info_pagamentos = {
+            str(m.id): {
+                'aluno': m.aluno.nome,
+                'competencia': m.competencia,
+                'restante': '%.2f' % (m.valor - (m.valor_pago or 0)),
+                'pagamentos': [
+                    {
+                        'id': p.id,
+                        'data': p.data_pagamento.isoformat(),
+                        'data_fmt': p.data_pagamento.strftime('%d/%m/%Y'),
+                        'valor': '%.2f' % p.valor,
+                        'valor_fmt': _moeda_ptbr(p.valor),
+                        'obs': p.observacao or '',
+                    }
+                    for p in m.pagamentos
+                ],
+            }
+            for m in paginacao.items
+        }
+
         return render_template(
             'financeiro.html',
             mensalidades=paginacao.items,
             paginacao=paginacao,
             status=status,
             busca=busca,
+            info_pagamentos=info_pagamentos,
             alunos=(Aluno.query.filter_by(status='ativo')
                     .options(joinedload(Aluno.instrumento)).order_by(Aluno.nome).all()),
             hoje=format_date_for_form(date.today()),
@@ -823,51 +1078,45 @@ def register_routes(app):
     @app.route('/usuarios')
     @papeis_required('gestora')
     def usuarios():
-        lista = Usuario.query.order_by(Usuario.nome).all()
-        return render_template('usuarios.html', usuarios=lista,
-                               papeis=[Usuario.PAPEL_GESTORA, Usuario.PAPEL_PROFESSORA,
-                                       Usuario.PAPEL_ALUNO])
+        return render_template('usuarios.html', **contexto_usuarios())
+
+    def contexto_usuarios(**extra):
+        return {
+            'usuarios': Usuario.query.order_by(Usuario.nome).all(),
+            'papeis': [Usuario.PAPEL_GESTORA, Usuario.PAPEL_PROFESSORA, Usuario.PAPEL_ALUNO],
+            **extra,
+        }
 
     @app.route('/adicionar_usuario', methods=['POST'])
     @papeis_required('gestora')
     def adicionar_usuario():
-        nome = (request.form.get('nome') or '').strip()
-        email = (request.form.get('email') or '').strip().lower()
-        senha = request.form.get('senha')
-        papel = request.form.get('papel', Usuario.PAPEL_GESTORA)
-        if not (nome and email and senha):
-            flash('Preencha nome, e-mail e senha.', 'danger')
-        elif Usuario.query.filter_by(email=email).first():
-            flash('Já existe um usuário com esse e-mail.', 'warning')
-        else:
-            novo = Usuario(nome=nome, email=email, papel=papel)
-            novo.set_senha(senha)
-            db.session.add(novo)
-            db.session.commit()
-            flash('Usuário criado com sucesso!', 'success')
+        dados, erros = validar_usuario(request.form)
+        if erros:
+            return render_template('usuarios.html', **contexto_usuarios(
+                erros=erros, valores=request.form, abrir_modal='novoUsuarioModal'))
+        novo = Usuario(nome=dados['nome'], email=dados['email'], papel=dados['papel'])
+        novo.set_senha(dados['senha'])
+        db.session.add(novo)
+        db.session.commit()
+        flash('Usuário criado com sucesso!', 'success')
         return redirect(url_for('usuarios'))
 
     @app.route('/editar_usuario/<int:id>', methods=['POST'])
     @papeis_required('gestora')
     def editar_usuario(id):
         usuario = db.get_or_404(Usuario, id)
-        nome = (request.form.get('nome') or '').strip()
-        email = (request.form.get('email') or '').strip().lower()
-        papel = request.form.get('papel', usuario.papel)
-        senha = request.form.get('senha')
-        conflito = Usuario.query.filter(Usuario.email == email, Usuario.id != id).first()
-        if not (nome and email):
-            flash('Nome e e-mail são obrigatórios.', 'danger')
-        elif conflito:
-            flash('Já existe outro usuário com esse e-mail.', 'warning')
-        else:
-            usuario.nome = nome
-            usuario.email = email
-            usuario.papel = papel
-            if senha:
-                usuario.set_senha(senha)
-            db.session.commit()
-            flash('Usuário atualizado com sucesso!', 'success')
+        dados, erros = validar_usuario(request.form, usuario=usuario, senha_obrigatoria=False)
+        if erros:
+            return render_template('usuarios.html', **contexto_usuarios(
+                erros=erros, valores=request.form, abrir_modal='editarUsuarioModal',
+                usuario_em_edicao=usuario))
+        usuario.nome = dados['nome']
+        usuario.email = dados['email']
+        usuario.papel = dados['papel']
+        if dados['senha']:
+            usuario.set_senha(dados['senha'])
+        db.session.commit()
+        flash('Usuário atualizado com sucesso!', 'success')
         return redirect(url_for('usuarios'))
 
     @app.route('/excluir_usuario/<int:id>', methods=['POST'])

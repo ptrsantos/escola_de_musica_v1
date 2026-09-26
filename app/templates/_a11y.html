@@ -1,0 +1,144 @@
+{#
+  Macros de formulário acessível (WCAG 2.2 AA).
+
+  Todo campo renderizado aqui sai com ``id``, com ``<label for>`` associado e,
+  quando houver, com ajuda e erro ligados por ``aria-describedby``. Use estas
+  macros em vez de escrever o HTML na mão: é o que garante que a associação
+  rótulo/campo não se perca na próxima alteração.
+
+  Atributos de validação e formatação (``tipo``, ``min``, ``max``, ``step``,
+  ``minlength``, ``maxlength``, ``placeholder``, ``inputmode``,
+  ``autocomplete``) são kwargs explícitos cujos valores passam pela saída
+  padrão do Jinja (escapados). Não existe parâmetro genérico de HTML: para um
+  comportamento como ``onchange`` use um listener de JavaScript no template;
+  para largura/estilo, uma classe CSS — nunca string interpolada.
+
+  O ``id`` é derivado do ``nome`` (campo-<nome>). Quando a mesma página tem dois
+  formulários com os mesmos nomes (ex.: criar e editar mensalidade), passe
+  ``id=`` explicitamente para evitar id duplicado no documento.
+#}
+
+{% macro _marca_obrigatorio(obrigatorio) -%}
+  {%- if obrigatorio %} <span class="visually-hidden">(obrigatório)</span><span aria-hidden="true">*</span>{% endif -%}
+{%- endmacro %}
+
+{% macro _descritores(id_campo, ajuda, erro) -%}
+  {%- set ids = [] -%}
+  {%- if ajuda %}{% set _ = ids.append(id_campo ~ '-ajuda') %}{% endif -%}
+  {%- if erro %}{% set _ = ids.append(id_campo ~ '-erro') %}{% endif -%}
+  {{- ids|join(' ') -}}
+{%- endmacro %}
+
+{% macro _auxiliares(id_campo, ajuda, erro) -%}
+  {%- if ajuda %}<div class="form-text" id="{{ id_campo }}-ajuda">{{ ajuda }}</div>{% endif -%}
+  {%- if erro %}<div class="invalid-feedback d-block" id="{{ id_campo }}-erro">{{ erro }}</div>{% endif -%}
+{%- endmacro %}
+
+
+{% macro campo(nome, rotulo, tipo='text', valor='', obrigatorio=false, ajuda=none,
+               erro=none, classe_wrapper='mb-3', id=none,
+               autocomplete=none, classe_campo='form-control', rotulo_oculto=false,
+               min=none, max=none, step=none, minlength=none, maxlength=none,
+               placeholder=none, inputmode=none) %}
+  {%- set id_campo = id or 'campo-' ~ nome -%}
+  {%- set descritos = _descritores(id_campo, ajuda, erro)|trim -%}
+  <div class="{{ classe_wrapper }}">
+    <label class="{{ 'visually-hidden' if rotulo_oculto else 'form-label' }}" for="{{ id_campo }}">{{ rotulo }}{{ _marca_obrigatorio(obrigatorio) }}</label>
+    <input type="{{ tipo }}" id="{{ id_campo }}" name="{{ nome }}"
+           class="{{ classe_campo }}{% if erro %} is-invalid{% endif %}"
+           value="{{ valor if valor is not none else '' }}"
+           {% if obrigatorio %}required{% endif %}
+           {% if erro %}aria-invalid="true"{% endif %}
+           {% if descritos %}aria-describedby="{{ descritos }}"{% endif %}
+           {% if autocomplete %}autocomplete="{{ autocomplete }}"{% endif %}
+           {% if min is not none %}min="{{ min }}"{% endif %}
+           {% if max is not none %}max="{{ max }}"{% endif %}
+           {% if step is not none %}step="{{ step }}"{% endif %}
+           {% if minlength is not none %}minlength="{{ minlength }}"{% endif %}
+           {% if maxlength is not none %}maxlength="{{ maxlength }}"{% endif %}
+           {% if placeholder %}placeholder="{{ placeholder }}"{% endif %}
+           {% if inputmode %}inputmode="{{ inputmode }}"{% endif %}>
+    {{ _auxiliares(id_campo, ajuda, erro) }}
+  </div>
+{% endmacro %}
+
+
+{% macro selecao(nome, rotulo, opcoes, selecionado=none, obrigatorio=false, ajuda=none,
+                 erro=none, classe_wrapper='mb-3', id=none,
+                 atributo_valor=none, atributo_texto=none, rotulo_oculto=false) %}
+  {#- ``opcoes``: lista de pares (valor, texto) ou, informando ``atributo_valor``
+      e ``atributo_texto``, uma lista de objetos do modelo. -#}
+  {%- set id_campo = id or 'campo-' ~ nome -%}
+  {%- set descritos = _descritores(id_campo, ajuda, erro)|trim -%}
+  <div class="{{ classe_wrapper }}">
+    <label class="{{ 'visually-hidden' if rotulo_oculto else 'form-label' }}" for="{{ id_campo }}">{{ rotulo }}{{ _marca_obrigatorio(obrigatorio) }}</label>
+    <select id="{{ id_campo }}" name="{{ nome }}"
+            class="form-select{% if erro %} is-invalid{% endif %}"
+            {% if obrigatorio %}required{% endif %}
+            {% if erro %}aria-invalid="true"{% endif %}
+            {% if descritos %}aria-describedby="{{ descritos }}"{% endif %}>
+      {% for opcao in opcoes %}
+        {%- if atributo_valor -%}
+          {%- set valor_opcao = opcao|attr(atributo_valor) -%}
+          {%- set texto = opcao|attr(atributo_texto) -%}
+        {%- else -%}
+          {%- set valor_opcao = opcao[0] -%}
+          {%- set texto = opcao[1] -%}
+        {%- endif -%}
+      <option value="{{ valor_opcao }}" {{ 'selected' if selecionado is not none and valor_opcao|string == selecionado|string else '' }}>{{ texto }}</option>
+      {% endfor %}
+    </select>
+    {{ _auxiliares(id_campo, ajuda, erro) }}
+  </div>
+{% endmacro %}
+
+
+{% macro area_texto(nome, rotulo, valor='', linhas=3, obrigatorio=false, ajuda=none,
+                    erro=none, classe_wrapper='mb-3', id=none, placeholder=none,
+                    rotulo_oculto=false) %}
+  {%- set id_campo = id or 'campo-' ~ nome -%}
+  {%- set descritos = _descritores(id_campo, ajuda, erro)|trim -%}
+  <div class="{{ classe_wrapper }}">
+    <label class="{{ 'visually-hidden' if rotulo_oculto else 'form-label' }}" for="{{ id_campo }}">{{ rotulo }}{{ _marca_obrigatorio(obrigatorio) }}</label>
+    <textarea id="{{ id_campo }}" name="{{ nome }}" rows="{{ linhas }}"
+              class="form-control{% if erro %} is-invalid{% endif %}"
+              {% if obrigatorio %}required{% endif %}
+              {% if erro %}aria-invalid="true"{% endif %}
+              {% if descritos %}aria-describedby="{{ descritos }}"{% endif %}
+              {% if placeholder %}placeholder="{{ placeholder }}"{% endif %}>{{ valor if valor is not none else '' }}</textarea>
+    {{ _auxiliares(id_campo, ajuda, erro) }}
+  </div>
+{% endmacro %}
+
+
+{% macro busca(valor='', rotulo='Pesquisar por nome', placeholder=none, nome='busca',
+               id='campo-busca', rotulo_botao='Pesquisar') %}
+  {#- Campo de busca com rótulo oculto e botão de ícone nomeado. -#}
+  <div class="input-group">
+    <label class="visually-hidden" for="{{ id }}">{{ rotulo }}</label>
+    <input type="search" class="form-control" id="{{ id }}" name="{{ nome }}"
+           value="{{ valor }}" {% if placeholder %}placeholder="{{ placeholder }}"{% endif %}>
+    <button class="btn btn-outline-secondary" type="submit" aria-label="{{ rotulo_botao }}">
+      <i class="fas fa-search" aria-hidden="true"></i>
+    </button>
+  </div>
+{% endmacro %}
+
+
+{% macro resumo_erros(erros, id='resumo-erros') %}
+  {#- ``erros``: dicionário nome_do_campo -> mensagem. Os links apontam para o
+      id determinístico gerado pelas macros acima (campo-<nome>). -#}
+  {% if erros %}
+  <div class="alert alert-danger" role="alert" id="{{ id }}" tabindex="-1">
+    <h2 class="h6 alert-heading">
+      {% if erros|length == 1 %}Corrija 1 problema antes de continuar
+      {% else %}Corrija {{ erros|length }} problemas antes de continuar{% endif %}
+    </h2>
+    <ul class="mb-0">
+      {% for nome, mensagem in erros.items() %}
+      <li><a href="#campo-{{ nome }}">{{ mensagem }}</a></li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+{% endmacro %}
