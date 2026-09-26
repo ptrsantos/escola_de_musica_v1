@@ -74,3 +74,4 @@ backup_*.sql
 Thumbs.db
 ehthumbs.db
 desktop.ini
+.env*
