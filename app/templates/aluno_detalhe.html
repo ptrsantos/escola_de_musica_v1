@@ -1,20 +1,24 @@
 {% extends 'base.html' %}
+{% from '_a11y.html' import campo, selecao, resumo_erros %}
 
 {% block title %}{{ aluno.nome }}{% endblock %}
 
 {% block content %}
+{#- Preenchidos pela rota quando a validação falha; vazios no fluxo normal. -#}
+{% set erros = erros|default({}) %}
+{% set valores = valores|default({}) %}
 {% set gestora = current_user.papel == 'gestora' %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
-        <h2 class="mb-0">{{ aluno.nome }}</h2>
+        <h1 class="h2 mb-0">{{ aluno.nome }}</h1>
         <p class="text-muted mb-0">{{ aluno.instrumento.nome }}{% if aluno.idade() %} · {{ aluno.idade() }} anos{% endif %}</p>
     </div>
     <div>
-        {% if current_user.papel == 'gestora' %}
-        <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#editarAlunoModal"><i class="fas fa-edit me-1"></i>Editar</button>
+        {% if gestora %}
+        <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#editarAlunoModal"><i class="fas fa-edit me-1" aria-hidden="true"></i>Editar</button>
         {% endif %}
         {% if current_user.papel in ['gestora','professora'] %}
-        <a href="{{ url_for('alunos') }}" class="btn btn-outline-primary btn-sm" onclick="mostrarSpinner()"><i class="fas fa-arrow-left me-1"></i>Voltar</a>
+        <a href="{{ url_for('alunos') }}" class="btn btn-outline-primary btn-sm" onclick="mostrarSpinner()"><i class="fas fa-arrow-left me-1" aria-hidden="true"></i>Voltar</a>
         {% endif %}
     </div>
 </div>
@@ -22,7 +26,7 @@
 <div class="row g-3 mb-3">
     <div class="col-md-4">
         <div class="card shadow-sm border-0 h-100">
-            <div class="card-header bg-white"><h5 class="mb-0">Dados cadastrais</h5></div>
+            <div class="card-header bg-white"><h2 class="h5 mb-0">Dados cadastrais</h2></div>
             <div class="card-body">
                 <dl class="row mb-0 small">
                     <dt class="col-5">Nascimento</dt><dd class="col-7">{{ aluno.data_nascimento.strftime('%d/%m/%Y') if aluno.data_nascimento else '—' }}</dd>
@@ -38,7 +42,7 @@
     </div>
     <div class="col-md-8">
         <div class="card shadow-sm border-0 h-100">
-            <div class="card-header bg-white"><h5 class="mb-0">{{ 'Situação financeira e risco' if gestora else 'Risco de evasão' }}</h5></div>
+            <div class="card-header bg-white"><h2 class="h5 mb-0">{{ 'Situação financeira e risco' if gestora else 'Risco de evasão' }}</h2></div>
             <div class="card-body">
                 <div class="row text-center">
                     {% if gestora %}
@@ -78,11 +82,12 @@
 
 {% if gestora %}
 <div class="card shadow-sm border-0 mb-3">
-    <div class="card-header bg-white"><h5 class="mb-0"><i class="fas fa-wallet me-2 text-primary"></i>Histórico de mensalidades</h5></div>
+    <div class="card-header bg-white"><h2 class="h5 mb-0"><i class="fas fa-wallet me-2 text-primary" aria-hidden="true"></i>Histórico de mensalidades</h2></div>
     <div class="card-body p-0">
-        <div class="table-responsive">
+        <div class="table-responsive" tabindex="0">
             <table class="table table-striped mb-0">
-                <thead class="table-light"><tr><th>Competência</th><th>Vencimento</th><th>Valor</th><th>Pago</th><th>Status</th></tr></thead>
+                <caption class="visually-hidden">Mensalidades do aluno, com vencimento, valor, valor pago e status</caption>
+                <thead class="table-light"><tr><th scope="col">Competência</th><th scope="col">Vencimento</th><th scope="col">Valor</th><th scope="col">Pago</th><th scope="col">Status</th></tr></thead>
                 <tbody>
                     {% for m in aluno.mensalidades|sort(attribute='vencimento', reverse=true) %}
                     <tr>
@@ -104,7 +109,7 @@
 
 <div class="card shadow-sm border-0">
     <div class="card-header bg-white d-flex justify-content-between align-items-center">
-        <h5 class="mb-0"><i class="fas fa-book-open me-2 text-primary"></i>Acompanhamento pedagógico</h5>
+        <h2 class="h5 mb-0"><i class="fas fa-book-open me-2 text-primary" aria-hidden="true"></i>Acompanhamento pedagógico</h2>
         {% if presenca.taxa is not none %}
         <span class="small">Presença:
             <span class="badge text-bg-{{ 'danger' if presenca.taxa < 0.6 else 'warning' if presenca.taxa < 0.8 else 'success' }}">{{ (100 * presenca.taxa)|round|int }}%</span>
@@ -124,7 +129,8 @@
                         {% if current_user.papel in ['gestora','professora'] %}
                         <form method="POST" action="{{ url_for('excluir_aula', id=aula.id) }}" onsubmit="return confirm('Excluir este acompanhamento?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <input type="hidden" name="next" value="{{ url_for('aluno_detalhe', id=aluno.id) }}">
-                            <button class="btn btn-sm btn-outline-danger py-0" title="Excluir"><i class="fas fa-trash"></i></button>
+                            <button class="btn btn-sm btn-outline-danger py-0"
+                                    aria-label="Excluir o acompanhamento de {{ aula.data.strftime('%d/%m/%Y') }}"><i class="fas fa-trash" aria-hidden="true"></i></button>
                         </form>
                         {% endif %}
                     </div>
@@ -141,55 +147,48 @@
     </div>
 </div>
 
-{% if current_user.papel == 'gestora' %}
+{% if gestora %}
 <!-- Modal Editar Aluno -->
-<div class="modal fade" id="editarAlunoModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="editarAlunoModal" tabindex="-1"
+     aria-labelledby="editarAlunoModalTitulo" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
             <form method="POST" action="{{ url_for('editar_aluno', id=aluno.id) }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <div class="modal-header"><h5 class="modal-title">Editar aluno</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-header"><h2 class="modal-title h5" id="editarAlunoModalTitulo">Editar aluno</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button></div>
                 <div class="modal-body">
-                    <div class="mb-3"><label class="form-label">Nome completo *</label><input type="text" class="form-control" name="nome" value="{{ aluno.nome }}" required></div>
-                    <div class="mb-3"><label class="form-label">Instrumento *</label>
-                        <select class="form-select" name="instrumento_id" required>
-                            {% for instrumento in instrumentos %}
-                            <option value="{{ instrumento.id }}" {{ 'selected' if instrumento.id==aluno.instrumento_id else '' }}>{{ instrumento.nome }}</option>
-                            {% endfor %}
-                        </select>
+                    {#- Como no cadastro, o par duplicado de dia/hora foi removido. -#}
+                    {{ resumo_erros(erros, id='editar-aluno-resumo-erros') }}
+                    {{ campo('nome', 'Nome completo', obrigatorio=true, autocomplete='name',
+                             valor=valores.get('nome', aluno.nome), erro=erros.get('nome')) }}
+                    {{ selecao('instrumento_id', 'Instrumento', instrumentos, obrigatorio=true,
+                               atributo_valor='id', atributo_texto='nome',
+                               selecionado=valores.get('instrumento_id', aluno.instrumento_id),
+                               erro=erros.get('instrumento_id')) }}
+                    <div class="row">
+                        {{ campo('data_nascimento', 'Data de nascimento', tipo='date',
+                                 valor=valores.get('data_nascimento', aluno.data_nascimento.isoformat() if aluno.data_nascimento else ''),
+                                 erro=erros.get('data_nascimento'),
+                                 classe_wrapper='col-6 mb-3') }}
+                        {{ campo('mensalidade_base', 'Mensalidade (R$)', tipo='number',
+                                 valor=valores.get('mensalidade_base', '%.2f'|format(aluno.mensalidade_base)),
+                                 erro=erros.get('mensalidade_base'),
+                                 step='0.01', min='0', classe_wrapper='col-6 mb-3') }}
                     </div>
                     <div class="row">
-                        <div class="col-6 mb-3"><label class="form-label">Data de nascimento</label><input type="date" class="form-control" name="data_nascimento" value="{{ aluno.data_nascimento.isoformat() if aluno.data_nascimento else '' }}"></div>
-                        <div class="col-6 mb-3"><label class="form-label">Mensalidade (R$)</label><input type="number" step="0.01" min="0" class="form-control" name="mensalidade_base" value="{{ '%.2f'|format(aluno.mensalidade_base) }}"></div>
+                        {{ selecao('dia_aula_semana', 'Dia da aula', DIAS_SEMANA_OPCOES,
+                                   selecionado=valores.get('dia_aula_semana', aluno.dia_aula_semana if aluno.dia_aula_semana is not none else -1),
+                                   classe_wrapper='col-6 mb-3') }}
+                        {{ campo('hora_aula', 'Horário da aula', tipo='time',
+                                 valor=valores.get('hora_aula', aluno.hora_aula.strftime('%H:%M') if aluno.hora_aula else ''),
+                                 erro=erros.get('hora_aula'), classe_wrapper='col-6 mb-3') }}
                     </div>
-                    <div class="row">
-                        <div class="col-6 mb-3"><label class="form-label">Dia da aula</label>
-                            <select class="form-select" name="dia_aula_semana">
-                                <option value="">—</option>
-                                {% for d in ['Segunda','Terça','Quarta','Quinta','Sexta','Sábado','Domingo'] %}<option value="{{ loop.index0 }}" {{ 'selected' if aluno.dia_aula_semana == loop.index0 else '' }}>{{ d }}</option>{% endfor %}
-                            </select>
-                        </div>
-                        <div class="col-6 mb-3"><label class="form-label">Hora da aula</label><input type="time" class="form-control" name="hora_aula" value="{{ aluno.hora_aula.strftime('%H:%M') if aluno.hora_aula else '' }}"></div>
-                    </div>
-                    <div class="mb-3"><label class="form-label">E-mail</label><input type="email" class="form-control" name="email" value="{{ aluno.email or '' }}"></div>
-                    <div class="mb-3"><label class="form-label">Endereço</label><input type="text" class="form-control" name="endereco" value="{{ aluno.endereco or '' }}"></div>
-                    <div class="row">
-                        <div class="col-6 mb-3"><label class="form-label">Dia da aula</label>
-                            <select class="form-select" name="dia_aula_semana">
-                                <option value="-1" {{ 'selected' if aluno.dia_aula_semana is none else '' }}>Sem horário fixo</option>
-                                {% for i in range(DIAS_SEMANA_PT|length) %}
-                                <option value="{{ i }}" {{ 'selected' if aluno.dia_aula_semana==i else '' }}>{{ DIAS_SEMANA_PT[i] }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                        <div class="col-6 mb-3"><label class="form-label">Horário da aula</label><input type="time" class="form-control" name="hora_aula" value="{{ aluno.hora_aula.strftime('%H:%M') if aluno.hora_aula else '' }}"></div>
-                    </div>
-                    <div class="mb-3"><label class="form-label">Status</label>
-                        <select class="form-select" name="status">
-                            <option value="ativo" {{ 'selected' if aluno.status=='ativo' else '' }}>Ativo</option>
-                            <option value="inativo" {{ 'selected' if aluno.status=='inativo' else '' }}>Inativo</option>
-                        </select>
-                    </div>
+                    {{ campo('email', 'E-mail', tipo='email', autocomplete='email',
+                             valor=valores.get('email', aluno.email or ''), erro=erros.get('email')) }}
+                    {{ campo('endereco', 'Endereço', autocomplete='street-address',
+                             valor=valores.get('endereco', aluno.endereco or '')) }}
+                    {{ selecao('status', 'Status', [('ativo', 'Ativo'), ('inativo', 'Inativo')],
+                               selecionado=valores.get('status', aluno.status)) }}
                 </div>
                 <div class="modal-footer"><button type="submit" class="btn btn-primary">Salvar</button></div>
             </form>

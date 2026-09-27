@@ -105,7 +105,7 @@ def test_dashboard_da_professora_conta_so_os_alunos_dela(dados, client):
     """Ana e Bruno são ativos e dela; Carla é ativa mas não é dela."""
     logar_professora(client)
     html = texto(client.get('/dashboard'))
-    assert '<h2 class="text-primary">2</h2>' in html
+    assert '<p class="h2 text-primary mb-0">2</p>' in html
     # os dados dos gráficos saem em JSON com acento escapado (tojson)
     assert 'Piano' in html and r'Viol\u00e3o' in html  # instrumentos de Ana e Bruno
     assert 'Bateria' not in html                       # instrumento da Carla

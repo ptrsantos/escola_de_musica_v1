@@ -83,12 +83,45 @@
             .sidebar .item-text { display: inline !important; }
             .app-layout:not(.sidebar-collapsed) #sidebar-backdrop { display: block; }
         }
-        .adimplente { color: green; }
-        .inadimplente { color: red; }
+        /* Atalho de teclado para saltar a navegação; fica oculto fora do foco,
+           mas nunca com display:none (isso o retiraria da ordem de foco). */
+        .skip-link {
+            position: absolute;
+            left: -9999px;
+            top: 0;
+            z-index: 1070;
+            padding: 0.75rem 1rem;
+            background-color: #fff;
+            color: #0a58ca;
+            font-weight: 600;
+            border: 2px solid #0a58ca;
+            border-radius: 0 0 6px 0;
+        }
+        .skip-link:focus { left: 0; }
+
+        /* Verde e vermelho puros não alcançam 4,5:1 sobre branco; estes tons
+           escurecidos passam, e o próprio texto do rótulo continua dizendo a
+           informação sem depender da cor. */
+        .adimplente { color: #1a7f37; }
+        .inadimplente { color: #c1121f; }
         .btn-group-sm { display: flex; gap: 5px; }
         .form-control:focus, .form-select:focus {
             border-color: #86b7fe;
             box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+        }
+
+        /* Foco sempre visível, com contorno próprio em vez de depender só da
+           sombra do Bootstrap. */
+        :focus-visible {
+            outline: 3px solid #0a58ca;
+            outline-offset: 2px;
+        }
+
+        /* Alvo de clique mínimo de 24x24 px nos botões pequenos de ação em
+           tabela, que antes ficavam abaixo disso. */
+        .btn-sm, .btn-group-sm > .btn {
+            min-width: 1.75rem;
+            min-height: 1.75rem;
         }
         /* Badges de risco de evasão */
         .badge-risco { border-radius: 20px; padding: 6px 12px; }
@@ -114,54 +147,72 @@
         }
         .spinner-border { width: 4rem; height: 4rem; border-width: 0.3em; color: #0d6efd; }
         .spinner-message { margin-top: 15px; font-size: 1.2rem; color: #0d6efd; font-weight: bold; }
+
+        /* Quem pede menos movimento no sistema operacional não recebe as
+           transições da sidebar nem o zoom dos cartões do painel. */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+                scroll-behavior: auto !important;
+            }
+            .sidebar { transition: none; }
+        }
     </style>
     {% block style %}{% endblock %}
 </head>
-<body>
+<body {% if abrir_modal %}data-abrir-modal="{{ abrir_modal }}"{% endif %}>
+    <a class="skip-link" href="#conteudo-principal">Pular para o conteúdo</a>
+
     <!-- Spinner Overlay -->
     <div id="spinner-overlay">
         <div class="spinner-border" role="status"><span class="visually-hidden">Carregando...</span></div>
-        <div class="spinner-message">Aguarde...</div>
+        <div class="spinner-message" tabindex="-1">Aguarde...</div>
     </div>
 
     {% if current_user.is_authenticated %}
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary" aria-label="Navegação principal">
         <div class="container-fluid">
-            <button type="button" id="sidebar-toggle" class="me-2" title="Recolher/expandir menu" aria-label="Recolher ou expandir o menu lateral"><i class="fas fa-eye" id="sidebar-toggle-icon"></i></button>
+            <button type="button" id="sidebar-toggle" class="me-2" aria-controls="sidebar"
+                    aria-expanded="true" aria-label="Recolher o menu lateral"><i class="fas fa-eye" id="sidebar-toggle-icon" aria-hidden="true"></i></button>
             <a class="navbar-brand d-flex align-items-center" href="{{ url_for('dashboard') }}" onclick="mostrarSpinner()"><img src="{{ url_for('static', filename='logo.jpeg') }}" alt="Studio Duo" height="36" class="me-3 logo-moldura">Studio Duo</a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
+                    data-bs-target="#navbarNav" aria-controls="navbarNav"
+                    aria-expanded="false" aria-label="Alternar navegação">
+                <span class="navbar-toggler-icon" aria-hidden="true"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav me-auto">
                     {% if current_user.papel in ['gestora','professora'] %}
-                    <li class="nav-item"><a class="nav-link {% if request.endpoint == 'inicio' %}active{% endif %}" href="{{ url_for('inicio') }}" onclick="mostrarSpinner()">Início</a></li>
-                    {% endif %}
-                    <li class="nav-item"><a class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}" onclick="mostrarSpinner()">Dashboard</a></li>
-                    {% if current_user.papel in ['gestora','professora'] %}
-                    <li class="nav-item"><a class="nav-link {% if request.endpoint in ['alunos','aluno_detalhe'] %}active{% endif %}" href="{{ url_for('alunos') }}" onclick="mostrarSpinner()">Alunos</a></li>
-                    {% endif %}
-                    {% if current_user.papel == 'gestora' %}
-                    <li class="nav-item"><a class="nav-link {% if request.endpoint == 'financeiro' %}active{% endif %}" href="{{ url_for('financeiro') }}" onclick="mostrarSpinner()">Mensalidades</a></li>
-                    {% endif %}
-                    {% if current_user.papel in ['gestora','professora'] %}
-                    <li class="nav-item"><a class="nav-link {% if request.endpoint == 'acompanhamento' %}active{% endif %}" href="{{ url_for('acompanhamento') }}" onclick="mostrarSpinner()">Acompanhamento</a></li>
+                    <li class="nav-item"><a class="nav-link {% if request.endpoint == 'inicio' %}active{% endif %}" href="{{ url_for('inicio') }}" {% if request.endpoint == 'inicio' %}aria-current="page"{% endif %} onclick="mostrarSpinner()">Início</a></li>
+                    {# Dashboard serve gestora e professora (painel gerencial e "Meu Painel"): comportamento da main. #}
+                    <li class="nav-item"><a class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}" {% if request.endpoint == 'dashboard' %}aria-current="page"{% endif %} onclick="mostrarSpinner()">Dashboard</a></li>
+                    <li class="nav-item"><a class="nav-link {% if request.endpoint in ['alunos','aluno_detalhe'] %}active{% endif %}" href="{{ url_for('alunos') }}" {% if request.endpoint in ['alunos','aluno_detalhe'] %}aria-current="page"{% endif %} onclick="mostrarSpinner()">Alunos</a></li>
                     {% endif %}
                     {% if current_user.papel == 'gestora' %}
-                    <li class="nav-item"><a class="nav-link {% if request.endpoint == 'relatorios' %}active{% endif %}" href="{{ url_for('relatorios') }}" onclick="mostrarSpinner()">Relatórios</a></li>
-                    <li class="nav-item"><a class="nav-link {% if request.endpoint == 'registrar' %}active{% endif %}" href="{{ url_for('registrar') }}" onclick="mostrarSpinner()">Usuários</a></li>
+                    <li class="nav-item"><a class="nav-link {% if request.endpoint == 'financeiro' %}active{% endif %}" href="{{ url_for('financeiro') }}" {% if request.endpoint == 'financeiro' %}aria-current="page"{% endif %} onclick="mostrarSpinner()">Mensalidades</a></li>
+                    {% endif %}
+                    {% if current_user.papel in ['gestora','professora'] %}
+                    <li class="nav-item"><a class="nav-link {% if request.endpoint == 'acompanhamento' %}active{% endif %}" href="{{ url_for('acompanhamento') }}" {% if request.endpoint == 'acompanhamento' %}aria-current="page"{% endif %} onclick="mostrarSpinner()">Acompanhamento</a></li>
+                    {% endif %}
+                    {% if current_user.papel == 'gestora' %}
+                    <li class="nav-item"><a class="nav-link {% if request.endpoint == 'relatorios' %}active{% endif %}" href="{{ url_for('relatorios') }}" {% if request.endpoint == 'relatorios' %}aria-current="page"{% endif %} onclick="mostrarSpinner()">Relatórios</a></li>
+                    <li class="nav-item"><a class="nav-link {% if request.endpoint == 'usuarios' %}active{% endif %}" href="{{ url_for('usuarios') }}" {% if request.endpoint == 'usuarios' %}aria-current="page"{% endif %} onclick="mostrarSpinner()">Usuários</a></li>
+                    <li class="nav-item"><a class="nav-link {% if request.endpoint == 'registrar' %}active{% endif %}" href="{{ url_for('registrar') }}" {% if request.endpoint == 'registrar' %}aria-current="page"{% endif %} onclick="mostrarSpinner()">Cadastrar usuário</a></li>
                     {% endif %}
                     {% if current_user.papel == 'aluno' %}
-                    <li class="nav-item"><a class="nav-link {% if request.endpoint == 'minha_area' %}active{% endif %}" href="{{ url_for('minha_area') }}" onclick="mostrarSpinner()">Minha Área</a></li>
+                    <li class="nav-item"><a class="nav-link {% if request.endpoint == 'minha_area' %}active{% endif %}" href="{{ url_for('minha_area') }}" {% if request.endpoint == 'minha_area' %}aria-current="page"{% endif %} onclick="mostrarSpinner()">Minha Área</a></li>
                     {% endif %}
                 </ul>
                 <ul class="navbar-nav">
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">
-                            <i class="fas fa-user me-1"></i>{{ current_user.nome }} · {{ current_user.papel|capitalize }}
-                        </a>
-                        <ul class="dropdown-menu dropdown-menu-end">
-                            <li><a class="dropdown-item" href="{{ url_for('logout') }}" onclick="mostrarSpinner()"><i class="fas fa-sign-out-alt me-2 text-primary"></i><span class="text-primary">Sair</span></a></li>
+                        <button class="nav-link dropdown-toggle" type="button" id="navbarDropdown"
+                                data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-user me-1" aria-hidden="true"></i>{{ current_user.nome }} · {{ current_user.papel|capitalize }}
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="navbarDropdown">
+                            <li><a class="dropdown-item" href="{{ url_for('logout') }}" onclick="mostrarSpinner()"><i class="fas fa-sign-out-alt me-2 text-primary" aria-hidden="true"></i><span class="text-primary">Sair</span></a></li>
                         </ul>
                     </li>
                 </ul>
@@ -173,89 +224,143 @@
     {% if current_user.is_authenticated %}
     <div class="app-layout d-flex" id="app-layout">
         <div id="sidebar-backdrop"></div>
-        <div class="sidebar" id="sidebar">
+        <nav class="sidebar" id="sidebar" aria-label="Seções do sistema">
                 <div class="list-group list-group-flush">
                     {% if current_user.papel in ['gestora','professora'] %}
-                    <a href="{{ url_for('inicio') }}" class="list-group-item list-group-item-action {% if request.endpoint == 'inicio' %}active{% endif %}" onclick="mostrarSpinner()">
-                        <i class="fas fa-home me-2"></i> <span class="item-text">Início</span>
+                    <a href="{{ url_for('inicio') }}" class="list-group-item list-group-item-action {% if request.endpoint == 'inicio' %}active{% endif %}" {% if request.endpoint == 'inicio' %}aria-current="page"{% endif %} onclick="mostrarSpinner()">
+                        <i class="fas fa-home me-2" aria-hidden="true"></i> <span class="item-text">Início</span>
                     </a>
-                    {% endif %}
-                    <a href="{{ url_for('dashboard') }}" class="list-group-item list-group-item-action {% if request.endpoint == 'dashboard' %}active{% endif %}" onclick="mostrarSpinner()">
-                        <i class="fas fa-tachometer-alt me-2"></i> <span class="item-text">Dashboard</span>
-                    </a>
-                    {% if current_user.papel in ['gestora','professora'] %}
-                    <a href="{{ url_for('alunos') }}" class="list-group-item list-group-item-action {% if request.endpoint in ['alunos','aluno_detalhe'] %}active{% endif %}" onclick="mostrarSpinner()">
-                        <i class="fas fa-users me-2"></i> <span class="item-text">Alunos</span>
-                    </a>
-                    {% endif %}
-                    {% if current_user.papel == 'gestora' %}
-                    <a href="{{ url_for('financeiro') }}" class="list-group-item list-group-item-action {% if request.endpoint == 'financeiro' %}active{% endif %}" onclick="mostrarSpinner()">
-                        <i class="fas fa-wallet me-2"></i> <span class="item-text">Mensalidades</span>
+                    {# Dashboard serve gestora e professora (painel gerencial e "Meu Painel"): comportamento da main. #}
+                    <a href="{{ url_for('dashboard') }}" class="list-group-item list-group-item-action {% if request.endpoint == 'dashboard' %}active{% endif %}" {% if request.endpoint == 'dashboard' %}aria-current="page"{% endif %} onclick="mostrarSpinner()">
+                        <i class="fas fa-tachometer-alt me-2" aria-hidden="true"></i> <span class="item-text">Dashboard</span>
                     </a>
                     {% endif %}
                     {% if current_user.papel in ['gestora','professora'] %}
-                    <a href="{{ url_for('acompanhamento') }}" class="list-group-item list-group-item-action {% if request.endpoint == 'acompanhamento' %}active{% endif %}" onclick="mostrarSpinner()">
-                        <i class="fas fa-book-open me-2"></i> <span class="item-text">Acompanhamento</span>
+                    <a href="{{ url_for('alunos') }}" class="list-group-item list-group-item-action {% if request.endpoint in ['alunos','aluno_detalhe'] %}active{% endif %}" {% if request.endpoint in ['alunos','aluno_detalhe'] %}aria-current="page"{% endif %} onclick="mostrarSpinner()">
+                        <i class="fas fa-users me-2" aria-hidden="true"></i> <span class="item-text">Alunos</span>
                     </a>
                     {% endif %}
                     {% if current_user.papel == 'gestora' %}
-                    <a href="{{ url_for('relatorios') }}" class="list-group-item list-group-item-action {% if request.endpoint == 'relatorios' %}active{% endif %}" onclick="mostrarSpinner()">
-                        <i class="fas fa-chart-pie me-2"></i> <span class="item-text">Relatórios</span>
+                    <a href="{{ url_for('financeiro') }}" class="list-group-item list-group-item-action {% if request.endpoint == 'financeiro' %}active{% endif %}" {% if request.endpoint == 'financeiro' %}aria-current="page"{% endif %} onclick="mostrarSpinner()">
+                        <i class="fas fa-wallet me-2" aria-hidden="true"></i> <span class="item-text">Mensalidades</span>
                     </a>
-                    <a href="{{ url_for('instrumentos') }}" class="list-group-item list-group-item-action {% if request.endpoint == 'instrumentos' %}active{% endif %}" onclick="mostrarSpinner()">
-                        <i class="fas fa-guitar me-2"></i> <span class="item-text">Instrumentos</span>
+                    {% endif %}
+                    {% if current_user.papel in ['gestora','professora'] %}
+                    <a href="{{ url_for('acompanhamento') }}" class="list-group-item list-group-item-action {% if request.endpoint == 'acompanhamento' %}active{% endif %}" {% if request.endpoint == 'acompanhamento' %}aria-current="page"{% endif %} onclick="mostrarSpinner()">
+                        <i class="fas fa-book-open me-2" aria-hidden="true"></i> <span class="item-text">Acompanhamento</span>
                     </a>
-                    <a href="{{ url_for('usuarios') }}" class="list-group-item list-group-item-action {% if request.endpoint == 'usuarios' %}active{% endif %}" onclick="mostrarSpinner()">
-                        <i class="fas fa-user-gear me-2"></i> <span class="item-text">Usuários</span>
+                    {% endif %}
+                    {% if current_user.papel == 'gestora' %}
+                    <a href="{{ url_for('relatorios') }}" class="list-group-item list-group-item-action {% if request.endpoint == 'relatorios' %}active{% endif %}" {% if request.endpoint == 'relatorios' %}aria-current="page"{% endif %} onclick="mostrarSpinner()">
+                        <i class="fas fa-chart-pie me-2" aria-hidden="true"></i> <span class="item-text">Relatórios</span>
                     </a>
-                    <a href="{{ url_for('registrar') }}" class="list-group-item list-group-item-action {% if request.endpoint == 'registrar' %}active{% endif %}" onclick="mostrarSpinner()">
-                        <i class="fas fa-user-plus me-2"></i> Usuários
+                    <a href="{{ url_for('instrumentos') }}" class="list-group-item list-group-item-action {% if request.endpoint == 'instrumentos' %}active{% endif %}" {% if request.endpoint == 'instrumentos' %}aria-current="page"{% endif %} onclick="mostrarSpinner()">
+                        <i class="fas fa-guitar me-2" aria-hidden="true"></i> <span class="item-text">Instrumentos</span>
+                    </a>
+                    <a href="{{ url_for('usuarios') }}" class="list-group-item list-group-item-action {% if request.endpoint == 'usuarios' %}active{% endif %}" {% if request.endpoint == 'usuarios' %}aria-current="page"{% endif %} onclick="mostrarSpinner()">
+                        <i class="fas fa-user-gear me-2" aria-hidden="true"></i> <span class="item-text">Usuários</span>
+                    </a>
+                    <a href="{{ url_for('registrar') }}" class="list-group-item list-group-item-action {% if request.endpoint == 'registrar' %}active{% endif %}" {% if request.endpoint == 'registrar' %}aria-current="page"{% endif %} onclick="mostrarSpinner()">
+                        <i class="fas fa-user-plus me-2" aria-hidden="true"></i> <span class="item-text">Cadastrar usuário</span>
                     </a>
                     {% endif %}
                     {% if current_user.papel == 'aluno' %}
-                    <a href="{{ url_for('minha_area') }}" class="list-group-item list-group-item-action {% if request.endpoint == 'minha_area' %}active{% endif %}" onclick="mostrarSpinner()">
-                        <i class="fas fa-graduation-cap me-2"></i> <span class="item-text">Minha Área</span>
+                    <a href="{{ url_for('minha_area') }}" class="list-group-item list-group-item-action {% if request.endpoint == 'minha_area' %}active{% endif %}" {% if request.endpoint == 'minha_area' %}aria-current="page"{% endif %} onclick="mostrarSpinner()">
+                        <i class="fas fa-graduation-cap me-2" aria-hidden="true"></i> <span class="item-text">Minha Área</span>
                     </a>
                     {% endif %}
                 </div>
-        </div>
-        <div class="main-content">
+        </nav>
+        <main class="main-content" id="conteudo-principal" tabindex="-1">
     {% else %}
-    <div class="container-fluid main-content">
+    <main class="container-fluid main-content" id="conteudo-principal" tabindex="-1">
     {% endif %}
         {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
             {% for category, message in messages %}
-            <div class="alert alert-{{ category|default('info') }} alert-dismissible fade show flash-message" role="alert">
+            {#- Erro e alerta interrompem a leitura (role="alert") e NÃO fecham
+                sozinhos; confirmação usa role="status" e fecha após 10 s. -#}
+            {% set eh_alerta = category in ['danger', 'warning'] %}
+            <div class="alert alert-{{ category|default('info') }} alert-dismissible fade show
+                        {% if not eh_alerta %}flash-temporaria{% endif %}"
+                 role="{{ 'alert' if eh_alerta else 'status' }}">
                 {{ message }}
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fechar mensagem"></button>
             </div>
             {% endfor %}
         {% endif %}
         {% endwith %}
 
         {% block content %}{% endblock %}
-        </div>
+        </main>
     {% if current_user.is_authenticated %}
     </div>
     {% endif %}
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.5/dist/js/bootstrap.bundle.min.js"></script>
     {# Chart.js em versão fixa, carregado só aqui (defeito nº 7: o dashboard pedia
-       outra cópia, a "latest", por cima desta). #}
+       outra cópia, a "latest", por cima desta). Versão da main (v4.5.1). #}
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1"></script>
 
     {# Spinner e comportamentos globais: ficam FORA do bloco de scripts das
        páginas filhas para continuarem disponíveis mesmo quando uma página
        sobrescreve esse bloco sem chamar super() (ex.: dashboard.html). #}
     <script>
+        // Overlay de carregamento: enquanto visível, o <main> fica marcado como
+        // ocupado (aria-busy) e o foco vai para a mensagem, anunciada pelo
+        // role="status". Ao ocultar, o foco volta ao elemento que estava ativo
+        // quando o overlay abriu (gatilho), se ele ainda existir na página. O
+        // overlay nunca prende o foco: é só ir e voltar.
+        let gatilhoDoOverlay = null;
+
+        // O overlay (#spinner-overlay) fica FORA de #app-layout, então inertizar
+        // o layout não afeta o próprio aviso de carregamento: o role="status" e
+        // o foco na mensagem continuam funcionando.
+        function fundoInerte(inerte) {
+            const layout = document.getElementById('app-layout')
+                || document.getElementById('conteudo-principal');
+            if (!layout) return;
+            if (inerte) {
+                layout.setAttribute('inert', '');
+                layout.setAttribute('aria-hidden', 'true');
+            } else {
+                layout.removeAttribute('inert');
+                layout.removeAttribute('aria-hidden');
+            }
+        }
+
         function mostrarSpinner() {
             const s = document.getElementById('spinner-overlay');
-            if (s) s.style.display = 'flex';
+            const principal = document.getElementById('conteudo-principal');
+            if (!s || s.style.display === 'flex') return;
+            if (principal) principal.setAttribute('aria-busy', 'true');
+            gatilhoDoOverlay = document.activeElement;
+            s.style.display = 'flex';
+            // Enquanto o overlay está visível, o fundo não recebe foco nem é lido.
+            fundoInerte(true);
+            const mensagem = s.querySelector('.spinner-message');
+            if (mensagem) mensagem.focus();
+            // Salvaguarda: se a navegação não trocar de página (ex.: cancelada),
+            // não deixa a tela travada em estado inerte.
+            clearTimeout(mostrarSpinner._t);
+            mostrarSpinner._t = setTimeout(esconderSpinner, 8000);
         }
         function esconderSpinner() {
+            clearTimeout(mostrarSpinner._t);
             const s = document.getElementById('spinner-overlay');
-            if (s) s.style.display = 'none';
+            const principal = document.getElementById('conteudo-principal');
+            if (principal) principal.removeAttribute('aria-busy');
+            // A inertização sai sempre, mesmo que o overlay já esteja oculto.
+            fundoInerte(false);
+            if (!s || s.style.display === 'none') {
+                gatilhoDoOverlay = null;
+                return;
+            }
+            s.style.display = 'none';
+            if (gatilhoDoOverlay && document.contains(gatilhoDoOverlay)) {
+                gatilhoDoOverlay.focus();
+            }
+            gatilhoDoOverlay = null;
         }
         window.addEventListener('load', esconderSpinner);
 
@@ -271,11 +376,21 @@
             // está aberto (clicar recolhe) e para a direita quando fechado (clicar abre).
             function atualizarIcone() {
                 const icone = document.getElementById('sidebar-toggle-icon');
-                if (!icone) return;
+                const botao = document.getElementById('sidebar-toggle');
                 const fechado = layout.classList.contains('sidebar-collapsed');
-                // Olho aberto = menu visível/aberto; olho cortado = menu oculto/fechado.
-                icone.classList.toggle('fa-eye-slash', fechado);
-                icone.classList.toggle('fa-eye', !fechado);
+                if (icone) {
+                    // Olho aberto = menu visível/aberto; olho cortado = menu oculto/fechado.
+                    icone.classList.toggle('fa-eye-slash', fechado);
+                    icone.classList.toggle('fa-eye', !fechado);
+                }
+                // O estado e o nome acessível acompanham o ícone: sem isso, quem
+                // usa leitor de tela não sabe se o menu está aberto nem o que o
+                // botão vai fazer.
+                if (botao) {
+                    botao.setAttribute('aria-expanded', fechado ? 'false' : 'true');
+                    botao.setAttribute('aria-label', fechado ? 'Expandir o menu lateral'
+                                                             : 'Recolher o menu lateral');
+                }
             }
 
             function aplicarEstadoInicial() {
@@ -330,16 +445,44 @@
             });
         })();
 
+        // Formulário devolvido com erro de validação: reabre o modal de origem e
+        // move o foco para o resumo de erros, para que a correção comece onde o
+        // problema está descrito (e não no topo da página).
+        document.addEventListener('DOMContentLoaded', function() {
+            const alvo = document.body.dataset.abrirModal;
+            if (!alvo) return;
+            const elemento = document.getElementById(alvo);
+            if (!elemento) return;
+            elemento.addEventListener('shown.bs.modal', function() {
+                const resumo = elemento.querySelector('.alert[role="alert"][tabindex="-1"]');
+                if (resumo) resumo.focus();
+            }, { once: true });
+            bootstrap.Modal.getOrCreateInstance(elemento).show();
+        });
+
+        // Salvaguarda: se um resumo de erros for renderizado FORA de um modal
+        // (formulário em página inteira), o foco vai direto para ele. No caso do
+        // modal, o listener acima já cuida do foco após a abertura, então este só
+        // age quando não há modal a reabrir.
+        document.addEventListener('DOMContentLoaded', function() {
+            if (document.body.dataset.abrirModal) return;
+            const resumo = document.querySelector('.alert[role="alert"][tabindex="-1"]');
+            if (resumo && !resumo.closest('.modal')) resumo.focus();
+        });
+
         document.addEventListener('DOMContentLoaded', function() {
             esconderSpinner();
-            const flashMessages = document.querySelectorAll('.flash-message');
-            if (flashMessages.length > 0) {
+            // Só confirmações fecham sozinhas. Erros e avisos permanecem até que a
+            // pessoa os feche: 3 segundos não dava tempo de ler, muito menos com
+            // ampliação ou leitor de tela.
+            const temporarias = document.querySelectorAll('.flash-temporaria');
+            if (temporarias.length > 0) {
                 setTimeout(function() {
-                    flashMessages.forEach(function(el) {
+                    temporarias.forEach(function(el) {
                         const alertInstance = bootstrap.Alert.getOrCreateInstance(el);
                         if (alertInstance) alertInstance.close();
                     });
-                }, 3000);
+                }, 10000);
             }
             document.querySelectorAll('form').forEach(form => form.addEventListener('submit', mostrarSpinner));
         });

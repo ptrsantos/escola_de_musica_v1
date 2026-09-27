@@ -1,5 +1,6 @@
 <!-- templates/registrar.html -->
 {% extends 'base.html' %}
+{% from '_a11y.html' import campo, selecao %}
 
 {% block title %}{% if primeiro_acesso %}Primeiro acesso{% else %}Novo usuário{% endif %}{% endblock %}
 
@@ -9,13 +10,13 @@
         <div class="col-md-6 offset-md-3">
             <div class="card">
                 <div class="card-header bg-primary text-white">
-                    <h4 class="mb-0">
+                    <h1 class="h4 mb-0">
                         {% if primeiro_acesso %}
-                            <i class="fas fa-key me-2"></i>Criar a conta da gestora
+                            <i class="fas fa-key me-2" aria-hidden="true"></i>Criar a conta da gestora
                         {% else %}
-                            <i class="fas fa-user-plus me-2"></i>Cadastrar usuário
+                            <i class="fas fa-user-plus me-2" aria-hidden="true"></i>Cadastrar usuário
                         {% endif %}
-                    </h4>
+                    </h1>
                 </div>
                 <div class="card-body">
                     {% if primeiro_acesso %}
@@ -26,30 +27,20 @@
                     {% endif %}
                     <form method="POST">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <div class="mb-3">
-                            <label for="nome" class="form-label">Nome completo</label>
-                            <input type="text" class="form-control" id="nome" name="nome" required>
-                        </div>
-                        <div class="mb-3">
-                            <label for="email" class="form-label">E-mail</label>
-                            <input type="email" class="form-control" id="email" name="email" required>
-                        </div>
+                        {{ campo('nome', 'Nome completo', obrigatorio=true,
+                                 autocomplete='name', id='nome') }}
+                        {{ campo('email', 'E-mail', tipo='email', obrigatorio=true,
+                                 autocomplete='email', id='email') }}
                         {% if not primeiro_acesso %}
-                        <div class="mb-3">
-                            <label for="papel" class="form-label">Perfil</label>
-                            <select class="form-select" id="papel" name="papel">
-                                <option value="aluno" selected>Aluno</option>
-                                <option value="professora">Professora</option>
-                                <option value="gestora">Proprietária / Gestora</option>
-                            </select>
-                            <div class="form-text">Para o perfil Aluno, use o mesmo e-mail cadastrado na ficha para que ele visualize os próprios dados.</div>
-                        </div>
+                        {{ selecao('papel', 'Perfil',
+                                   [('aluno', 'Aluno'), ('professora', 'Professora'),
+                                    ('gestora', 'Proprietária / Gestora')],
+                                   selecionado='aluno', id='papel',
+                                   ajuda='Para o perfil Aluno, use o mesmo e-mail cadastrado na ficha para que ele visualize os próprios dados.') }}
                         {% endif %}
-                        <div class="mb-3">
-                            <label for="senha" class="form-label">Senha</label>
-                            <input type="password" class="form-control" id="senha" name="senha" minlength="6" required>
-                            <div class="form-text">Mínimo de 6 caracteres.</div>
-                        </div>
+                        {{ campo('senha', 'Senha', tipo='password', obrigatorio=true,
+                                 autocomplete='new-password', minlength=6,
+                                 ajuda='Mínimo de 6 caracteres.', id='senha') }}
                         <div class="d-grid">
                             <button type="submit" class="btn btn-primary">
                                 {% if primeiro_acesso %}Criar conta{% else %}Cadastrar{% endif %}

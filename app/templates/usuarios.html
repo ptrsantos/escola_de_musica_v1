@@ -1,35 +1,45 @@
 {% extends 'base.html' %}
+{% from '_a11y.html' import campo, selecao, resumo_erros %}
 
 {% block title %}Usuários{% endblock %}
 
 {% block content %}
+{#- Preenchidos pela rota quando a validação falha; vazios no fluxo normal. -#}
+{% set erros = erros|default({}) %}
+{% set valores = valores|default({}) %}
+{#- Pares (valor, texto) dos perfis, reaproveitados nos dois modais. -#}
+{% set opcoes_papeis = [] %}
+{% for p in papeis %}{% set _ = opcoes_papeis.append((p, p|capitalize)) %}{% endfor %}
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h2>Usuários</h2>
+    <h1 class="h2">Usuários</h1>
     <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#novoUsuarioModal">
-        <i class="fas fa-plus me-1"></i>Novo usuário
+        <i class="fas fa-plus me-1" aria-hidden="true"></i>Novo usuário
     </button>
 </div>
 
 <div class="card shadow-sm border-0">
     <div class="card-body p-0">
-        <div class="table-responsive">
+        <div class="table-responsive" tabindex="0">
             <table class="table table-striped table-hover mb-0 align-middle">
-                <thead class="table-light"><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th class="text-end">Ações</th></tr></thead>
+                <caption class="visually-hidden">Usuários do sistema, com e-mail, perfil de acesso e ações</caption>
+                <thead class="table-light"><tr><th scope="col">Nome</th><th scope="col">E-mail</th><th scope="col">Perfil</th><th scope="col" class="text-end">Ações</th></tr></thead>
                 <tbody>
                     {% for u in usuarios %}
                     <tr>
-                        <td class="fw-semibold">{{ u.nome }}{% if u.id == current_user.id %} <span class="badge text-bg-info">você</span>{% endif %}</td>
+                        <th scope="row" class="fw-semibold">{{ u.nome }}{% if u.id == current_user.id %} <span class="badge text-bg-info">você</span>{% endif %}</th>
                         <td>{{ u.email }}</td>
                         <td><span class="badge text-bg-secondary">{{ u.papel|capitalize }}</span></td>
                         <td class="text-end">
                             <div class="btn-group btn-group-sm">
-                                <button type="button" class="btn btn-outline-secondary" title="Editar"
+                                <button type="button" class="btn btn-outline-secondary"
+                                        aria-label="Editar o usuário {{ u.nome }}"
                                         data-bs-toggle="modal" data-bs-target="#editarUsuarioModal"
-                                        data-id="{{ u.id }}" data-nome="{{ u.nome }}" data-email="{{ u.email }}" data-papel="{{ u.papel }}"><i class="fas fa-edit"></i></button>
+                                        data-id="{{ u.id }}" data-nome="{{ u.nome }}" data-email="{{ u.email }}" data-papel="{{ u.papel }}"><i class="fas fa-edit" aria-hidden="true"></i></button>
                                 {% if u.id != current_user.id %}
-                                <button type="button" class="btn btn-outline-danger" title="Excluir"
+                                <button type="button" class="btn btn-outline-danger"
+                                        aria-label="Excluir o usuário {{ u.nome }}"
                                         data-bs-toggle="modal" data-bs-target="#excluirUsuarioModal"
-                                        data-id="{{ u.id }}" data-nome="{{ u.nome }}"><i class="fas fa-trash"></i></button>
+                                        data-id="{{ u.id }}" data-nome="{{ u.nome }}"><i class="fas fa-trash" aria-hidden="true"></i></button>
                                 {% endif %}
                             </div>
                         </td>
@@ -44,20 +54,28 @@
 </div>
 
 <!-- Modal Novo Usuário -->
-<div class="modal fade" id="novoUsuarioModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="novoUsuarioModal" tabindex="-1"
+     aria-labelledby="novoUsuarioModalTitulo" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
             <form method="POST" action="{{ url_for('adicionar_usuario') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <div class="modal-header"><h5 class="modal-title">Novo usuário</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-header"><h2 class="modal-title h5" id="novoUsuarioModalTitulo">Novo usuário</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button></div>
                 <div class="modal-body">
-                    <div class="mb-3"><label class="form-label">Nome *</label><input type="text" class="form-control" name="nome" required></div>
-                    <div class="mb-3"><label class="form-label">E-mail *</label><input type="email" class="form-control" name="email" required></div>
-                    <div class="mb-3"><label class="form-label">Senha *</label><input type="password" class="form-control" name="senha" required></div>
-                    <div class="mb-3"><label class="form-label">Perfil</label>
-                        <select class="form-select" name="papel">
-                            {% for p in papeis %}<option value="{{ p }}">{{ p|capitalize }}</option>{% endfor %}
-                        </select>
-                    </div>
+                    {% if abrir_modal == 'novoUsuarioModal' %}
+                    {{ resumo_erros(erros, id='novo-usuario-resumo-erros') }}
+                    {% endif %}
+                    {{ campo('nome', 'Nome', obrigatorio=true, autocomplete='name',
+                             valor=valores.get('nome', ''), erro=erros.get('nome'),
+                             id='novo-u-nome') }}
+                    {{ campo('email', 'E-mail', tipo='email', obrigatorio=true,
+                             autocomplete='email', valor=valores.get('email', ''),
+                             erro=erros.get('email'), id='novo-u-email') }}
+                    {{ campo('senha', 'Senha', tipo='password', obrigatorio=true,
+                             autocomplete='new-password', ajuda='Mínimo de 6 caracteres.',
+                             erro=erros.get('senha'),
+                             minlength=6, id='novo-u-senha') }}
+                    {{ selecao('papel', 'Perfil', opcoes_papeis,
+                               selecionado=valores.get('papel'), id='novo-u-papel') }}
                 </div>
                 <div class="modal-footer"><button type="submit" class="btn btn-primary">Salvar</button></div>
             </form>
@@ -66,20 +84,28 @@
 </div>
 
 <!-- Modal Editar Usuário -->
-<div class="modal fade" id="editarUsuarioModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="editarUsuarioModal" tabindex="-1"
+     aria-labelledby="editarUsuarioModalTitulo" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
-            <form method="POST" id="form-editar-usuario"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <div class="modal-header"><h5 class="modal-title">Editar usuário</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <form method="POST" id="form-editar-usuario" {% if usuario_em_edicao %}action="{{ url_for('editar_usuario', id=usuario_em_edicao.id) }}"{% endif %}><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="modal-header"><h2 class="modal-title h5" id="editarUsuarioModalTitulo">Editar usuário</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button></div>
                 <div class="modal-body">
-                    <div class="mb-3"><label class="form-label">Nome *</label><input type="text" class="form-control" name="nome" id="edit-u-nome" required></div>
-                    <div class="mb-3"><label class="form-label">E-mail *</label><input type="email" class="form-control" name="email" id="edit-u-email" required></div>
-                    <div class="mb-3"><label class="form-label">Nova senha</label><input type="password" class="form-control" name="senha" placeholder="Deixe em branco para manter a atual"></div>
-                    <div class="mb-3"><label class="form-label">Perfil</label>
-                        <select class="form-select" name="papel" id="edit-u-papel">
-                            {% for p in papeis %}<option value="{{ p }}">{{ p|capitalize }}</option>{% endfor %}
-                        </select>
-                    </div>
+                    {#- Os ids edit-u-* são os que o JavaScript do rodapé preenche. -#}
+                    {% if abrir_modal == 'editarUsuarioModal' %}
+                    {{ resumo_erros(erros, id='editar-usuario-resumo-erros') }}
+                    {% endif %}
+                    {{ campo('nome', 'Nome', obrigatorio=true, autocomplete='name',
+                             valor=valores.get('nome', ''), erro=erros.get('nome'),
+                             id='edit-u-nome') }}
+                    {{ campo('email', 'E-mail', tipo='email', obrigatorio=true,
+                             autocomplete='email', valor=valores.get('email', ''),
+                             erro=erros.get('email'), id='edit-u-email') }}
+                    {{ campo('senha', 'Nova senha', tipo='password', autocomplete='new-password',
+                             ajuda='Deixe em branco para manter a senha atual.',
+                             erro=erros.get('senha'), id='edit-u-senha') }}
+                    {{ selecao('papel', 'Perfil', opcoes_papeis,
+                               selecionado=valores.get('papel'), id='edit-u-papel') }}
                 </div>
                 <div class="modal-footer"><button type="submit" class="btn btn-primary">Salvar alterações</button></div>
             </form>
@@ -88,11 +114,13 @@
 </div>
 
 <!-- Modal Excluir Usuário -->
-<div class="modal fade" id="excluirUsuarioModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="excluirUsuarioModal" tabindex="-1"
+     aria-labelledby="excluirUsuarioModalTitulo" aria-describedby="excluirUsuarioModalAviso"
+     aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
-            <div class="modal-header"><h5 class="modal-title">Confirmar exclusão</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-            <div class="modal-body"><p>Excluir o usuário <strong id="excluir-u-nome"></strong>?</p><p class="text-danger small mb-0">Esta ação não pode ser desfeita.</p></div>
+            <div class="modal-header"><h2 class="modal-title h5" id="excluirUsuarioModalTitulo">Confirmar exclusão</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button></div>
+            <div class="modal-body"><p>Excluir o usuário <strong id="excluir-u-nome"></strong>?</p><p class="text-danger small mb-0" id="excluirUsuarioModalAviso">Esta ação não pode ser desfeita.</p></div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
                 <form id="form-excluir-usuario" method="POST"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn btn-danger">Excluir</button></form>
@@ -109,6 +137,10 @@
         if (editModal) {
             editModal.addEventListener('show.bs.modal', function(event) {
                 const b = event.relatedTarget;
+                // Sem relatedTarget o modal foi aberto pelo servidor (formulário
+                // devolvido com erro): os valores digitados já estão no HTML e
+                // não devem ser sobrescritos.
+                if (!b) return;
                 document.getElementById('form-editar-usuario').action = '/editar_usuario/' + b.getAttribute('data-id');
                 document.getElementById('edit-u-nome').value = b.getAttribute('data-nome');
                 document.getElementById('edit-u-email').value = b.getAttribute('data-email');
@@ -119,6 +151,7 @@
         if (delModal) {
             delModal.addEventListener('show.bs.modal', function(event) {
                 const b = event.relatedTarget;
+                if (!b) return;
                 document.getElementById('excluir-u-nome').textContent = b.getAttribute('data-nome');
                 document.getElementById('form-excluir-usuario').action = '/excluir_usuario/' + b.getAttribute('data-id');
             });

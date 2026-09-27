@@ -1,5 +1,6 @@
 <!-- templates/login.html -->
 {% extends 'base.html' %}
+{% from '_a11y.html' import campo %}
 
 {% block title %}Login{% endblock %}
 
@@ -10,19 +11,15 @@
             <div class="card">
                 <div class="card-header bg-primary text-white d-flex align-items-center">
                     <img src="{{ url_for('static', filename='logo.jpeg') }}" alt="Studio Duo" height="36" class="me-3 logo-moldura">
-                    <h4 class="mb-0">Studio Duo · Login</h4>
+                    <h1 class="h4 mb-0">Studio Duo · Login</h1>
                 </div>
                 <div class="card-body">
                     <form method="POST">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <div class="mb-3">
-                            <label for="email" class="form-label">Email</label>
-                            <input type="email" class="form-control" id="email" name="email" required>
-                        </div>
-                        <div class="mb-3">
-                            <label for="senha" class="form-label">Senha</label>
-                            <input type="password" class="form-control" id="senha" name="senha" required>
-                        </div>
+                        {{ campo('email', 'E-mail', tipo='email', obrigatorio=true,
+                                 autocomplete='username', id='email') }}
+                        {{ campo('senha', 'Senha', tipo='password', obrigatorio=true,
+                                 autocomplete='current-password', id='senha') }}
                         <div class="d-grid">
                             <button type="submit" class="btn btn-primary">Entrar</button>
                         </div>

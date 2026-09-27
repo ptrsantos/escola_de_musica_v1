@@ -63,8 +63,15 @@ backup_*.sql
 *~
 *.bak
 
+# --- Todas as pastas ocultas (que comecam com ".") ---
+# Regra generica: ignora qualquer diretorio cujo nome comece com ponto
+# (.kiro, .abacusai, .vibe, .pytest_cache, .venv, etc.).
+# O .git nao e afetado (o proprio Git nunca versiona seu diretorio interno).
+.*/
+
 # --- Sistema operacional ---
 .DS_Store
 Thumbs.db
 ehthumbs.db
 desktop.ini
+.env*
