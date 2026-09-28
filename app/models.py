@@ -29,6 +29,13 @@ class Usuario(UserMixin, db.Model):
     PAPEL_GESTORA = 'gestora'
     PAPEL_PROFESSORA = 'professora'
     PAPEL_ALUNO = 'aluno'
+    # Como o perfil aparece nas telas: nos dois gêneros (pedido da direção,
+    # 28/09/2026). O valor gravado continua o de sempre. Na ordem das listas.
+    ROTULOS_PAPEL = {
+        PAPEL_ALUNO: 'Aluno / Aluna',
+        PAPEL_PROFESSORA: 'Professor / Professora',
+        PAPEL_GESTORA: 'Gestor / Gestora',
+    }
 
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(100), nullable=False)
@@ -42,6 +49,10 @@ class Usuario(UserMixin, db.Model):
 
     def verificar_senha(self, senha):
         return check_password_hash(self.senha_hash, senha)
+
+    @property
+    def rotulo_papel(self):
+        return self.ROTULOS_PAPEL.get(self.papel, self.papel)
 
     @property
     def is_gestora(self):

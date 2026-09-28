@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
 {% from '_a11y.html' import campo, selecao, resumo_erros %}
+{% from '_ficha_aluno.html' import campos_da_ficha, script_da_ficha %}
 
 {% block title %}Usuários{% endblock %}
 
@@ -7,9 +8,8 @@
 {#- Preenchidos pela rota quando a validação falha; vazios no fluxo normal. -#}
 {% set erros = erros|default({}) %}
 {% set valores = valores|default({}) %}
-{#- Pares (valor, texto) dos perfis, reaproveitados nos dois modais. -#}
-{% set opcoes_papeis = [] %}
-{% for p in papeis %}{% set _ = opcoes_papeis.append((p, p|capitalize)) %}{% endfor %}
+{#- Pares (valor, texto) dos perfis, nos dois gêneros, reaproveitados nos dois modais. -#}
+{% set opcoes_papeis = rotulos_papel.items()|list %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1 class="h2">Usuários</h1>
     <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#novoUsuarioModal">
@@ -28,7 +28,14 @@
                     <tr>
                         <th scope="row" class="fw-semibold">{{ u.nome }}{% if u.id == current_user.id %} <span class="badge text-bg-info">você</span>{% endif %}</th>
                         <td>{{ u.email }}</td>
-                        <td><span class="badge text-bg-secondary">{{ u.papel|capitalize }}</span></td>
+                        <td>
+                            <span class="badge text-bg-secondary">{{ u.rotulo_papel }}</span>
+                            {% if u.id in sem_ficha %}
+                            <span class="badge text-bg-warning">sem ficha de aluno</span>
+                            <a class="small ms-1" href="{{ url_for('alunos', completar_usuario=u.id) }}"
+                               aria-label="Completar a ficha de aluno de {{ u.nome }}">Completar a ficha</a>
+                            {% endif %}
+                        </td>
                         <td class="text-end">
                             <div class="btn-group btn-group-sm">
                                 <button type="button" class="btn btn-outline-secondary"
@@ -62,7 +69,7 @@
                 <div class="modal-header"><h2 class="modal-title h5" id="novoUsuarioModalTitulo">Novo usuário</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button></div>
                 <div class="modal-body">
                     {% if abrir_modal == 'novoUsuarioModal' %}
-                    {{ resumo_erros(erros, id='novo-usuario-resumo-erros') }}
+                    {{ resumo_erros(erros, id='novo-usuario-resumo-erros', prefixo='novo-u-') }}
                     {% endif %}
                     {{ campo('nome', 'Nome', obrigatorio=true, autocomplete='name',
                              valor=valores.get('nome', ''), erro=erros.get('nome'),
@@ -74,8 +81,11 @@
                              autocomplete='new-password', ajuda='Mínimo de 6 caracteres.',
                              erro=erros.get('senha'),
                              minlength=6, id='novo-u-senha') }}
+                    {% set papel_novo = valores.get('papel', 'aluno') if abrir_modal == 'novoUsuarioModal' else 'aluno' %}
                     {{ selecao('papel', 'Perfil', opcoes_papeis,
-                               selecionado=valores.get('papel'), id='novo-u-papel') }}
+                               selecionado=papel_novo, id='novo-u-papel') }}
+                    {{ campos_da_ficha(instrumentos, valores if abrir_modal == 'novoUsuarioModal' else {},
+                                       erros, prefixo='novo-u-', visivel=(papel_novo == 'aluno')) }}
                 </div>
                 <div class="modal-footer"><button type="submit" class="btn btn-primary">Salvar</button></div>
             </form>
@@ -93,7 +103,7 @@
                 <div class="modal-body">
                     {#- Os ids edit-u-* são os que o JavaScript do rodapé preenche. -#}
                     {% if abrir_modal == 'editarUsuarioModal' %}
-                    {{ resumo_erros(erros, id='editar-usuario-resumo-erros') }}
+                    {{ resumo_erros(erros, id='editar-usuario-resumo-erros', prefixo='edit-u-') }}
                     {% endif %}
                     {{ campo('nome', 'Nome', obrigatorio=true, autocomplete='name',
                              valor=valores.get('nome', ''), erro=erros.get('nome'),
@@ -131,6 +141,7 @@
 {% endblock %}
 
 {% block scripts %}
+{{ script_da_ficha('novo-u-papel', 'novo-u-ficha-aluno') }}
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         const editModal = document.getElementById('editarUsuarioModal');

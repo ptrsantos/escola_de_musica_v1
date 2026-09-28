@@ -125,9 +125,11 @@
 {% endmacro %}
 
 
-{% macro resumo_erros(erros, id='resumo-erros') %}
+{% macro resumo_erros(erros, id='resumo-erros', prefixo='campo-') %}
   {#- ``erros``: dicionário nome_do_campo -> mensagem. Os links apontam para o
-      id determinístico gerado pelas macros acima (campo-<nome>). -#}
+      id determinístico gerado pelas macros acima (campo-<nome>); quando o
+      formulário passa ``id=`` explícito com outro prefixo (ex.: novo-u-<nome>),
+      informe o mesmo ``prefixo``. -#}
   {% if erros %}
   <div class="alert alert-danger" role="alert" id="{{ id }}" tabindex="-1">
     <h2 class="h6 alert-heading">
@@ -136,7 +138,7 @@
     </h2>
     <ul class="mb-0">
       {% for nome, mensagem in erros.items() %}
-      <li><a href="#campo-{{ nome }}">{{ mensagem }}</a></li>
+      <li><a href="#{{ prefixo }}{{ nome }}">{{ mensagem }}</a></li>
       {% endfor %}
     </ul>
   </div>

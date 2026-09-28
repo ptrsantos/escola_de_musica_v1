@@ -22,7 +22,7 @@ from conftest import logar_gestora, logar_professora, logar_aluno
 PAGINAS_GESTORA = ['/inicio', '/dashboard', '/alunos', '/financeiro', '/relatorios',
                    '/acompanhamento', '/instrumentos', '/usuarios', '/registrar']
 PAGINAS_PROFESSORA = ['/inicio', '/dashboard', '/alunos', '/acompanhamento']
-PAGINAS_ANONIMAS = ['/', '/login']
+PAGINAS_ANONIMAS = ['/', '/login', '/alterar-senha']
 
 # Tipos de input que não precisam de rótulo visível para o usuário.
 TIPOS_SEM_ROTULO = {'hidden', 'submit', 'button', 'reset', 'image', 'csrf_token'}
@@ -848,16 +848,19 @@ def _hrefs_dashboard(arvore):
     return [a for a in itens if a['href'].rstrip('/') == '/dashboard']
 
 
-def test_aluno_nao_ve_dashboard_no_menu(dados, client):
-    """Requisito 1: para o aluno, 'Dashboard' e 'Minha Área' abrem a mesma tela,
-    então 'Dashboard' não deve aparecer na navegação."""
+def test_aluno_ve_as_tres_areas_no_menu(dados, client):
+    """Requisito 1, revisto em 28/09/2026: a área do aluno foi separada em três
+    telas a pedido do professor — Dashboard (pagamentos), Minha Área (dados
+    pessoais) e Observações pedagógicas —, então as três aparecem no menu e a
+    atual fica marcada. (Antes o Dashboard do aluno repetia a Minha Área e
+    ficava fora do menu.)"""
     logar_aluno(client)
     arvore = sopa(client, '/minha-area')
-    assert not _hrefs_dashboard(arvore), \
-        'o menu do aluno não deve conter link para /dashboard'
-    # "Minha Área" continua presente e marcada como página atual.
+    assert _hrefs_dashboard(arvore), 'o aluno precisa ver o item "Dashboard"'
+    for destino in ('/minha-area', '/observacoes'):
+        itens = [a for a in arvore.select('nav a[href]') if a['href'].rstrip('/') == destino]
+        assert itens, f'o aluno precisa ver o item {destino}'
     minha = [a for a in arvore.select('nav a[href]') if a['href'].rstrip('/') == '/minha-area']
-    assert minha, 'o aluno precisa ver o item "Minha Área"'
     assert any(a.get('aria-current') == 'page' for a in minha), \
         '"Minha Área" deve estar com aria-current="page" na própria página'
 
@@ -962,3 +965,112 @@ def test_foco_vai_para_o_resumo_de_erros_ao_reexibir(dados, client):
     # E o script que move o foco ao abrir o modal está presente.
     html = resposta.get_data(as_text=True)
     assert 'shown.bs.modal' in html and '.focus()' in html
+
+
+# ---------------------------------------------------------------------------
+# Área do aluno e troca de senha — telas nossas, no padrão acima desde 28/09.
+# A área do aluno tem três telas (pedido do professor, 28/09): Dashboard
+# (pagamentos), Minha Área (dados pessoais) e Observações pedagógicas.
+# /alterar-senha também entrou em PAGINAS_ANONIMAS.
+# ---------------------------------------------------------------------------
+PAGINAS_ALUNO = ['/dashboard', '/minha-area', '/observacoes']
+
+
+@pytest.mark.parametrize('rota', PAGINAS_ALUNO)
+def test_area_do_aluno_segue_o_padrao(dados, client, rota):
+    logar_aluno(client)
+    arvore = sopa(client, rota)
+    verificar_landmarks(arvore, rota)
+    verificar_nomes_de_controles(arvore, rota)
+    verificar_tabelas(arvore, rota)
+    verificar_html_sem_aspas_escapadas(client, rota)
+
+    niveis = [int(t.name[1]) for t in arvore.select('h1, h2, h3, h4, h5, h6')]
+    assert niveis[0] == 1, f'{rota}: primeiro título é h{niveis[0]}, não h1'
+    for anterior, atual in zip(niveis, niveis[1:]):
+        assert atual <= anterior + 1, f'{rota}: salto de h{anterior} para h{atual}'
+
+    expostos = [str(i)[:80] for i in arvore.select('i.fas, i.far, i.fab, i.bi')
+                if i.get('aria-hidden') != 'true']
+    assert not expostos, f'{rota}: ícone(s) decorativo(s) sem aria-hidden: {expostos}'
+    assert not arvore.select('.text-warning'), f'{rota}: texto usando .text-warning'
+    sem_acesso = [d for d in arvore.select('.table-responsive') if d.get('tabindex') != '0']
+    assert not sem_acesso, f'{rota}: .table-responsive sem tabindex="0"'
+
+
+def verificar_grafico(resposta, id_grafico, linhas_esperadas):
+    """role="img" + aria-label, descrição na mesma <figure> e tabela equivalente
+    em <details>; devolve (descrição, linhas da tabela)."""
+    html = resposta.get_data(as_text=True)
+    arvore = BeautifulSoup(html, 'html.parser')
+    grafico = arvore.find(id=id_grafico)
+    assert grafico is not None, f'{id_grafico} não renderizado'
+    assert grafico.get('role') == 'img' and len(grafico.get('aria-label') or '') > 30
+    figura = grafico.find_parent('figure')
+    assert figura is not None, f'{id_grafico}: canvas fora de <figure>'
+    descricao = arvore.find(id=grafico.get('aria-describedby'))
+    assert descricao is not None and descricao.find_parent('figure') is figura
+    assert figura.select_one('figcaption details summary').get_text(strip=True)
+    tabela = figura.select_one('figcaption details table')
+    assert tabela is not None, f'{id_grafico}: sem tabela equivalente em <details>'
+    linhas = tabela.select('tbody tr')
+    assert len(linhas) == linhas_esperadas, f'{id_grafico}: a tabela não tem os meses do gráfico'
+    assert '...semAnimacao' in html, 'o gráfico precisa respeitar prefers-reduced-motion'
+    return descricao.get_text(), [[td.get_text(strip=True) for td in tr.find_all('td')] for tr in linhas]
+
+
+def test_grafico_de_aulas_do_aluno_tem_alternativa_textual(dados, client):
+    """Conjunto ``dados``: a Ana tem uma aula há 5 dias, sem marcador de
+    presença — nos 6 meses, 0 presenças, 0 faltas e 1 aula sem registro."""
+    logar_aluno(client)
+    descricao, linhas = verificar_grafico(client.get('/observacoes'), 'aulasMesChart', 6)
+    assert 'Total: 1 aula sem presença registrada.' in descricao
+    assert [sum(int(v) for v in c) for c in zip(*linhas)] == [0, 0, 1]
+
+
+def test_grafico_de_mensalidades_do_aluno_tem_alternativa_textual(dados, client):
+    """Conjunto ``dados``: a Ana pagou 4 x R$ 250 nos últimos meses e tem 1
+    pendente que vence em 20 dias, com a competência do mês corrente."""
+    logar_aluno(client)
+    descricao, linhas = verificar_grafico(client.get('/dashboard'), 'mensalidadesChart', 12)
+    assert 'Total: R$ 1.000,00 pago, R$ 250,00 a vencer.' in descricao
+    assert linhas[-1] == ['R$ 0,00', 'R$ 0,00', 'R$ 250,00']       # pago, em atraso, a vencer
+
+
+def test_erro_da_troca_de_senha_fica_associado_ao_campo(dados, client):
+    resposta = client.post('/alterar-senha', data={
+        'email': 'professora@escola.com', 'senha_atual': 'errada',
+        'nova_senha': 'nova-senha', 'confirmar_senha': 'nova-senha'})
+    assert resposta.status_code == 200, 'erro de validação não deve redirecionar'
+    arvore = BeautifulSoup(resposta.get_data(as_text=True), 'html.parser')
+
+    resumo = arvore.select_one('.alert[role="alert"][tabindex="-1"]')
+    assert resumo is not None, 'sem resumo de erros com role="alert"'
+    assert resumo.find('a', href='#campo-senha_atual') is not None
+
+    invalido = arvore.find(id='campo-senha_atual')
+    assert invalido.get('aria-invalid') == 'true'
+    assert 'campo-senha_atual-erro' in (invalido.get('aria-describedby') or '').split()
+    assert arvore.find(id='campo-senha_atual-erro').get_text(strip=True) == \
+        'E-mail ou senha atual inválidos.'
+    # O e-mail não é marcado: a mensagem não diz qual dos dois está errado.
+    assert arvore.find(id='campo-email').get('aria-invalid') is None
+    assert arvore.find(id='campo-email').get('value') == 'professora@escola.com'
+    for nome in ('senha_atual', 'nova_senha', 'confirmar_senha'):
+        assert arvore.find(id=f'campo-{nome}').get('value') == '', \
+            f'a senha {nome} não pode voltar preenchida'
+
+
+def test_troca_de_senha_marca_cada_campo_invalido(dados, client):
+    resposta = client.post('/alterar-senha', data={
+        'email': 'professora@escola.com', 'senha_atual': 'errada',
+        'nova_senha': '123', 'confirmar_senha': '321'})
+    arvore = BeautifulSoup(resposta.get_data(as_text=True), 'html.parser')
+    for nome in ('senha_atual', 'nova_senha', 'confirmar_senha'):
+        assert arvore.find(id=f'campo-{nome}').get('aria-invalid') == 'true', nome
+    # A ajuda "Pelo menos 6 caracteres." continua ligada ao campo, junto do erro.
+    assert arvore.find(id='campo-nova_senha').get('aria-describedby').split() == \
+        ['campo-nova_senha-ajuda', 'campo-nova_senha-erro']
+    # O resumo segue a ordem do formulário.
+    assert [a['href'] for a in arvore.select('#resumo-erros a')] == \
+        ['#campo-senha_atual', '#campo-nova_senha', '#campo-confirmar_senha']

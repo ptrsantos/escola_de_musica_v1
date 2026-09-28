@@ -1,13 +1,18 @@
 <!-- templates/registrar.html -->
 {% extends 'base.html' %}
-{% from '_a11y.html' import campo, selecao %}
+{% from '_a11y.html' import campo, selecao, resumo_erros %}
+{% from '_ficha_aluno.html' import campos_da_ficha, script_da_ficha %}
 
 {% block title %}{% if primeiro_acesso %}Primeiro acesso{% else %}Novo usuário{% endif %}{% endblock %}
 
 {% block content %}
+{#- Preenchidos pela rota quando a validação falha; vazios no fluxo normal. -#}
+{% set erros = erros|default({}) %}
+{% set valores = valores|default({}) %}
+{% set papel = valores.get('papel', 'aluno') %}
 <div class="container mt-5">
     <div class="row">
-        <div class="col-md-6 offset-md-3">
+        <div class="col-md-8 offset-md-2 col-lg-6 offset-lg-3">
             <div class="card">
                 <div class="card-header bg-primary text-white">
                     <h1 class="h4 mb-0">
@@ -25,22 +30,23 @@
                         responsável por cadastrar os demais usuários depois.
                     </div>
                     {% endif %}
+                    {# Os campos têm id igual ao nome (sem o prefixo campo-): o
+                       resumo aponta para eles com prefixo vazio. #}
+                    {{ resumo_erros(erros, prefixo='') }}
                     <form method="POST">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        {{ campo('nome', 'Nome completo', obrigatorio=true,
-                                 autocomplete='name', id='nome') }}
-                        {{ campo('email', 'E-mail', tipo='email', obrigatorio=true,
-                                 autocomplete='email', id='email') }}
-                        {% if not primeiro_acesso %}
-                        {{ selecao('papel', 'Perfil',
-                                   [('aluno', 'Aluno'), ('professora', 'Professora'),
-                                    ('gestora', 'Proprietária / Gestora')],
-                                   selecionado='aluno', id='papel',
-                                   ajuda='Para o perfil Aluno, use o mesmo e-mail cadastrado na ficha para que ele visualize os próprios dados.') }}
-                        {% endif %}
+                        {{ campo('nome', 'Nome completo', obrigatorio=true, autocomplete='name',
+                                 valor=valores.get('nome', ''), erro=erros.get('nome'), id='nome') }}
+                        {{ campo('email', 'E-mail', tipo='email', obrigatorio=true, autocomplete='email',
+                                 valor=valores.get('email', ''), erro=erros.get('email'), id='email') }}
                         {{ campo('senha', 'Senha', tipo='password', obrigatorio=true,
                                  autocomplete='new-password', minlength=6,
-                                 ajuda='Mínimo de 6 caracteres.', id='senha') }}
+                                 ajuda='Mínimo de 6 caracteres.', erro=erros.get('senha'), id='senha') }}
+                        {% if not primeiro_acesso %}
+                        {{ selecao('papel', 'Perfil', rotulos_papel.items()|list,
+                                   selecionado=papel, id='papel') }}
+                        {{ campos_da_ficha(instrumentos, valores, erros, visivel=(papel == 'aluno')) }}
+                        {% endif %}
                         <div class="d-grid">
                             <button type="submit" class="btn btn-primary">
                                 {% if primeiro_acesso %}Criar conta{% else %}Cadastrar{% endif %}
@@ -57,4 +63,8 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+{% if not primeiro_acesso %}{{ script_da_ficha('papel', 'ficha-aluno') }}{% endif %}
 {% endblock %}

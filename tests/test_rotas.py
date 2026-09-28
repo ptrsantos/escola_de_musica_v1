@@ -50,7 +50,7 @@ def test_professora_e_redirecionada(dados, client, rota):
 
 def test_anonimo_vai_para_login(dados, client):
     for rota in ['/dashboard', '/alunos', '/financeiro', '/relatorios', '/acompanhamento',
-                 f'/aluno/{dados["ana"]}', '/minha-area']:
+                 f'/aluno/{dados["ana"]}', '/minha-area', '/observacoes']:
         r = client.get(rota)
         assert r.status_code == 302 and '/login' in r.headers['Location'], rota
     assert client.get('/').status_code == 200
@@ -59,10 +59,11 @@ def test_anonimo_vai_para_login(dados, client):
 
 def test_aluno_so_ve_a_propria_area(dados, client):
     logar_aluno(client)
-    r = client.get('/dashboard')                  # painel do aluno (test_painel_aluno.py)
+    r = client.get('/dashboard')                  # pagamentos (test_painel_aluno.py)
     assert r.status_code == 200 and 'Meu painel' in texto(r)
-    r = client.get('/minha-area')
-    assert r.status_code == 200 and 'Adimplente' in texto(r)
+    r = client.get('/minha-area')                 # dados pessoais
+    assert r.status_code == 200 and 'Meus dados' in texto(r)
+    assert client.get('/observacoes').status_code == 200
     # A ficha (com o risco de evasão) é da escola: o aluno vai para o painel,
     # seja a própria ficha, seja a de outro aluno.
     for ficha in (dados['ana'], dados['bruno'], 99999):

@@ -2,12 +2,7 @@
 
 {% block title %}Meu painel{% endblock %}
 
-{% block content %}
-{# Painel do aluno (pedido da direção, 22/09/2026): resumo de uma olhada. As
-   listas completas de aulas e mensalidades ficam na Minha Área. O risco de
-   evasão não aparece aqui — é ferramenta da escola, não do aluno. #}
-{% set visual = aluno.instrumento.nome|visual_instrumento %}
-{% set p = painel %}
+{% block style %}
 <style>
     .painel-cabecalho { border-radius: 12px; }
     .painel-emoji {
@@ -15,133 +10,201 @@
         background: #fff; font-size: 2.2rem; line-height: 1;
         display: flex; align-items: center; justify-content: center;
     }
-    .painel-metrica .rotulo { font-size: 0.85rem; color: #6c757d; }
+    /* O rótulo do card é o título dele (<h2>), com a aparência discreta de antes. */
+    .painel-metrica .rotulo { font-size: 0.85rem; font-weight: 400; color: #6c757d; margin-bottom: 0.25rem; }
     .painel-metrica .valor { font-size: 1.6rem; font-weight: 600; line-height: 1.2; }
     .painel-metrica .detalhe { font-size: 0.8rem; color: #6c757d; }
-    .painel-texto { white-space: pre-line; }
 </style>
+{% endblock %}
 
+{% block content %}
+{# Dashboard do aluno: pagamentos e inadimplência (pedido do professor,
+   28/09/2026). Dados pessoais ficam na Minha Área; aulas e observações, em
+   Observações pedagógicas. O risco de evasão não aparece: é ferramenta da
+   escola, não do aluno. Acessibilidade no padrão de docs/acessibilidade.md. #}
+{% set visual = aluno.instrumento.nome|visual_instrumento %}
 <div class="painel-cabecalho d-flex align-items-center gap-3 p-3 p-md-4 mb-4"
      style="background: {{ visual.fundo }}; border: 1px solid {{ visual.cor }}40; color: {{ visual.cor }};">
     <div class="painel-emoji" aria-hidden="true">{{ visual.emoji }}</div>
     <div>
-        <h2 class="mb-1" style="color: {{ visual.cor }};">Olá, {{ current_user.nome }}</h2>
-        <div>
+        <h1 class="h2 mb-1" style="color: {{ visual.cor }};">Olá, {{ current_user.nome }}</h1>
+        <p class="mb-0">
             <strong>{{ aluno.instrumento.nome }}</strong>
             {% if aluno.horario_aula %} · aula fixa: {{ aluno.horario_aula }}{% endif %}
-            {% if p.professora %} · professora {{ p.professora }}{% endif %}
-        </div>
+            · suas mensalidades e pagamentos
+        </p>
     </div>
 </div>
 
 <div class="row g-3 mb-4">
-    <div class="col-6 col-lg-3">
+    <div class="col-sm-4">
         <div class="card shadow-sm border-0 h-100 painel-metrica"><div class="card-body">
-            <div class="rotulo"><i class="fas fa-user-check me-1"></i>Presença em {{ p.ano }}</div>
-            {% if p.presenca.taxa is not none %}
-            {% set taxa = p.presenca.taxa %}
-            <div class="valor {{ 'text-success' if taxa >= 0.75 else ('text-warning' if taxa >= 0.5 else 'text-danger') }}">{{ '%.0f'|format(taxa * 100) }}%</div>
-            <div class="detalhe">{{ p.presenca.presencas }} presença{{ 's' if p.presenca.presencas != 1 }} · {{ p.presenca.faltas }} falta{{ 's' if p.presenca.faltas != 1 }}</div>
+            <h2 class="rotulo"><i class="fas fa-scale-balanced me-1" aria-hidden="true"></i>Situação</h2>
+            {% if fin.em_atraso %}
+            <p class="h2 valor mb-0 text-danger">{{ fin.em_atraso|length }} em atraso</p>
+            <p class="detalhe mb-0">R$ {{ fin.valor_em_aberto|moeda }} em aberto</p>
             {% else %}
-            <div class="valor text-muted">—</div>
-            <div class="detalhe">nenhuma presença registrada no ano</div>
+            <p class="h2 valor mb-0 text-success">Em dia</p>
+            <p class="detalhe mb-0">nenhuma mensalidade em atraso</p>
             {% endif %}
         </div></div>
     </div>
-    <div class="col-6 col-lg-3">
+    <div class="col-sm-4">
         <div class="card shadow-sm border-0 h-100 painel-metrica"><div class="card-body">
-            <div class="rotulo"><i class="fas fa-calendar-day me-1"></i>Próxima aula</div>
-            {% if p.proxima_aula %}
-            <div class="valor">{{ p.proxima_aula_rotulo }}</div>
-            <div class="detalhe">{{ 'às ' ~ aluno.hora_aula.strftime('%H:%M') if aluno.hora_aula else 'horário a combinar' }}</div>
+            <h2 class="rotulo"><i class="fas fa-calendar-day me-1" aria-hidden="true"></i>Próxima mensalidade</h2>
+            {% if fin.proxima %}
+            <p class="h2 valor mb-0">{{ fin.proxima.vencimento.strftime('%d/%m/%Y') }}</p>
+            <p class="detalhe mb-0">R$ {{ fin.proxima.valor|moeda }}</p>
             {% else %}
-            <div class="valor text-muted">—</div>
-            <div class="detalhe">sem horário fixo cadastrado</div>
+            <p class="h2 valor mb-0 text-muted">—</p>
+            <p class="detalhe mb-0">nenhuma pendente</p>
             {% endif %}
         </div></div>
     </div>
-    <div class="col-6 col-lg-3">
+    <div class="col-sm-4">
         <div class="card shadow-sm border-0 h-100 painel-metrica"><div class="card-body">
-            <div class="rotulo"><i class="fas fa-music me-1"></i>Última aula</div>
-            {% if p.ultima_aula %}
-            <div class="valor">{{ p.ultima_aula.data.strftime('%d/%m') }}</div>
-            <div class="detalhe">{{ p.ultima_aula.presenca }}</div>
-            {% else %}
-            <div class="valor text-muted">—</div>
-            <div class="detalhe">nenhuma aula registrada</div>
-            {% endif %}
-        </div></div>
-    </div>
-    <div class="col-6 col-lg-3">
-        <div class="card shadow-sm border-0 h-100 painel-metrica"><div class="card-body">
-            <div class="rotulo"><i class="fas fa-wallet me-1"></i>Mensalidades</div>
-            {% set m = p.mensalidades %}
-            {% if m.em_atraso %}
-            <div class="valor text-danger">{{ m.em_atraso }} em atraso</div>
-            <div class="detalhe">R$ {{ m.valor_em_aberto|moeda }} em aberto</div>
-            {% else %}
-            <div class="valor text-success">Em dia</div>
-            <div class="detalhe">{% if m.proxima %}próxima vence {{ m.proxima.vencimento.strftime('%d/%m') }} · R$ {{ m.proxima.valor|moeda }}{% else %}nenhuma pendente{% endif %}</div>
-            {% endif %}
+            <h2 class="rotulo"><i class="fas fa-wallet me-1" aria-hidden="true"></i>Pago em {{ fin.ano_corrente }}</h2>
+            <p class="h2 valor mb-0">R$ {{ fin.pago_no_ano|moeda }}</p>
+            <p class="detalhe mb-0">{{ fin.quitadas_no_ano }} de {{ fin.do_ano }} mensalidade{{ 's' if fin.do_ano != 1 }} do ano quitada{{ 's' if fin.do_ano != 1 }}</p>
         </div></div>
     </div>
 </div>
+
+{% if fin.em_atraso %}
+<div class="card shadow-sm border-0 mb-4">
+    <div class="card-header bg-white"><h2 class="h5 mb-0 text-danger"><i class="fas fa-triangle-exclamation me-2" aria-hidden="true"></i>Mensalidades em atraso</h2></div>
+    <div class="card-body p-0">
+        <div class="table-responsive" tabindex="0">
+            <table class="table table-sm mb-0 align-middle">
+                <caption class="px-3">Total em aberto: <strong>R$ {{ fin.valor_em_aberto|moeda }}</strong>. Para regularizar, procure a secretaria da escola.</caption>
+                <thead class="table-light"><tr><th scope="col">Competência</th><th scope="col">Vencimento</th><th scope="col" class="text-end">Valor</th><th scope="col" class="text-end">Falta pagar</th></tr></thead>
+                <tbody>
+                    {% for item in fin.em_atraso %}
+                    {% set m = item.mensalidade %}
+                    <tr>
+                        <th scope="row" class="fw-normal">{{ m.competencia[5:] }}/{{ m.competencia[:4] }}</th>
+                        <td>{{ m.vencimento.strftime('%d/%m/%Y') }}</td>
+                        <td class="text-end">R$ {{ m.valor|moeda }}</td>
+                        <td class="text-end text-danger">R$ {{ item.falta|moeda }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 <div class="row g-3 mb-3">
-    <div class="col-lg-7">
+    <div class="col-lg-6">
         <div class="card shadow-sm border-0 h-100">
-            <div class="card-header bg-white"><h5 class="mb-0">Aulas por mês</h5></div>
+            <div class="card-header bg-white"><h2 class="h5 mb-0">Últimos 12 meses</h2></div>
             <div class="card-body">
-                {% if p.aulas_por_mes.total %}
-                <div style="position: relative; height: 240px;"><canvas id="aulasMesChart"></canvas></div>
+                {% set g = fin.por_mes %}
+                {% if g.total %}
+                <figure class="mb-0">
+                    <div style="position: relative; height: 240px;">
+                        <canvas id="mensalidadesChart" role="img"
+                                aria-label="Gráfico de barras empilhadas com o valor pago, em atraso e a vencer das mensalidades em cada um dos últimos {{ g.rotulos|length }} meses. Os valores estão na tabela abaixo."
+                                aria-describedby="desc-mensalidades"></canvas>
+                    </div>
+                    <figcaption class="mt-2">
+                        <p class="visually-hidden" id="desc-mensalidades">{{ g.descricao }}</p>
+                        <details>
+                            <summary>Ver dados em tabela</summary>
+                            <table class="table table-sm mt-2 mb-0">
+                                <caption class="visually-hidden">Valor pago, em atraso e a vencer por mês de competência, nos últimos {{ g.rotulos|length }} meses</caption>
+                                <thead><tr><th scope="col">Mês</th><th scope="col" class="text-end">Pago</th><th scope="col" class="text-end">Em atraso</th><th scope="col" class="text-end">A vencer</th></tr></thead>
+                                <tbody>
+                                    {% for mes in g.rotulos %}
+                                    <tr><th scope="row" class="fw-normal">{{ mes }}</th><td class="text-end">R$ {{ g.pago[loop.index0]|moeda }}</td><td class="text-end">R$ {{ g.atraso[loop.index0]|moeda }}</td><td class="text-end">R$ {{ g.a_vencer[loop.index0]|moeda }}</td></tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </details>
+                    </figcaption>
+                </figure>
                 {% else %}
-                <p class="text-muted text-center py-4 mb-0">Nenhuma aula registrada nos últimos 6 meses.</p>
+                <p class="text-muted text-center py-4 mb-0">Nenhuma mensalidade nos últimos 12 meses.</p>
                 {% endif %}
             </div>
         </div>
     </div>
-    <div class="col-lg-5">
+    <div class="col-lg-6">
         <div class="card shadow-sm border-0 h-100">
-            <div class="card-header bg-white"><h5 class="mb-0"><i class="fas fa-book-open me-2" style="color: {{ visual.cor }};"></i>Para estudar</h5></div>
-            <div class="card-body">
-                {% if p.para_estudar %}
-                <div class="text-muted small mb-2">Aula de {{ p.para_estudar.data.strftime('%d/%m/%Y') }} · {{ p.para_estudar.professora }}</div>
-                <p class="painel-texto">{{ p.para_estudar.orientacao }}</p>
-                {% if p.para_estudar.observacao %}
-                <div class="text-muted small mb-1">Observação da professora</div>
-                <p class="painel-texto text-secondary mb-0">{{ p.para_estudar.observacao }}</p>
+            <div class="card-header bg-white d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <h2 class="h5 mb-0">Mensalidades de {{ fin.ano }}</h2>
+                {% if fin.anos|length > 1 %}
+                <nav aria-label="Anos das mensalidades">
+                    <ul class="pagination pagination-sm mb-0">
+                        {% for a in fin.anos|reverse %}
+                        {% if a == fin.ano %}
+                        <li class="page-item active"><span class="page-link" aria-current="page">{{ a }}</span></li>
+                        {% else %}
+                        <li class="page-item"><a class="page-link" href="{{ url_for('dashboard', ano=a) }}" onclick="mostrarSpinner()">{{ a }}</a></li>
+                        {% endif %}
+                        {% endfor %}
+                    </ul>
+                </nav>
                 {% endif %}
-                {% else %}
-                <p class="text-muted mb-0">Sua professora ainda não registrou orientações de estudo.</p>
-                {% endif %}
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive" tabindex="0">
+                    <table class="table table-striped table-sm mb-0 align-middle">
+                        <caption class="visually-hidden">Suas mensalidades de {{ fin.ano }}, com vencimento, valor, quanto foi pago e a situação</caption>
+                        <thead class="table-light"><tr><th scope="col">Competência</th><th scope="col">Vencimento</th><th scope="col" class="text-end">Valor</th><th scope="col" class="text-end">Pago</th><th scope="col">Situação</th></tr></thead>
+                        <tbody>
+                            {% for m in fin.lista %}
+                            <tr>
+                                <th scope="row" class="fw-normal">{{ m.competencia[5:] }}/{{ m.competencia[:4] }}</th>
+                                <td>{{ m.vencimento.strftime('%d/%m/%Y') }}</td>
+                                <td class="text-end">R$ {{ m.valor|moeda }}</td>
+                                <td class="text-end">R$ {{ (m.valor_pago or 0)|moeda }}</td>
+                                <td><span class="badge text-bg-{{ 'success' if m.status == 'pago' else ('danger' if m.status == 'em atraso' else 'warning') }}">{{ m.status|capitalize }}</span></td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="5" class="text-muted text-center py-3">Nenhuma mensalidade.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
 </div>
 
-<p class="text-muted small mb-0">O histórico completo de aulas e mensalidades está na
-    <a href="{{ url_for('minha_area') }}" onclick="mostrarSpinner()">Minha Área</a>.</p>
+<p class="text-muted small mb-0">Seus dados de cadastro estão na
+    <a href="{{ url_for('minha_area') }}" onclick="mostrarSpinner()">Minha Área</a>; as aulas e o que estudar, em
+    <a href="{{ url_for('observacoes') }}" onclick="mostrarSpinner()">Observações pedagógicas</a>.</p>
 {% endblock %}
 
 {% block scripts %}
-{% if painel.aulas_por_mes.total %}
+{% if fin.por_mes.total %}
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    const d = {{ painel.aulas_por_mes|tojson }};
-    new Chart(document.getElementById('aulasMesChart').getContext('2d'), {
+    const d = {{ fin.por_mes|tojson }};
+    // Quem pede menos movimento no sistema não recebe a animação de entrada
+    // (mesma regra do dashboard: o @media CSS não alcança o <canvas>).
+    const reduzirMovimento = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const semAnimacao = reduzirMovimento ? { animation: false } : {};
+    const moeda = function (v) { return 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
+    new Chart(document.getElementById('mensalidadesChart').getContext('2d'), {
         type: 'bar',
         data: {
             labels: d.rotulos,
             datasets: [
-                { label: 'Presenças', data: d.presencas, backgroundColor: 'rgba(25, 135, 84, 0.75)' },
-                { label: 'Faltas', data: d.faltas, backgroundColor: 'rgba(220, 53, 69, 0.7)' },
-                { label: 'Aula sem presença registrada', data: d.sem_registro, backgroundColor: 'rgba(173, 181, 189, 0.6)' }
+                { label: 'Pago', data: d.pago, backgroundColor: 'rgba(25, 135, 84, 0.75)' },
+                { label: 'Em atraso', data: d.atraso, backgroundColor: 'rgba(220, 53, 69, 0.7)' },
+                { label: 'A vencer', data: d.a_vencer, backgroundColor: 'rgba(173, 181, 189, 0.6)' }
             ]
         },
         options: {
-            responsive: true, maintainAspectRatio: false,
-            plugins: { legend: { position: 'bottom' } },
-            scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { precision: 0 } } }
+            responsive: true, maintainAspectRatio: false, ...semAnimacao,
+            plugins: {
+                legend: { position: 'bottom' },
+                tooltip: { callbacks: { label: function (c) { return c.dataset.label + ': ' + moeda(c.parsed.y); } } }
+            },
+            scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { callback: moeda } } }
         }
     });
 });

@@ -81,10 +81,13 @@ def test_papel_invalido_cai_em_aluno(app, client):
         db.session.commit()
     logar_gestora(client)
 
-    client.post('/registrar', data=cadastro(email='x@escola.com', papel='superadmin'))
+    # Aluno exige o instrumento da ficha (cadastro do login + ficha, 28/09).
+    client.post('/registrar', data={**cadastro(email='x@escola.com', papel='superadmin'),
+                                    'instrumento_id': 1})
     assert papel_de(app, 'x@escola.com') == Usuario.PAPEL_ALUNO
 
-    client.post('/registrar', data=cadastro(email='y@escola.com'))   # sem campo papel
+    client.post('/registrar', data={**cadastro(email='y@escola.com'),   # sem campo papel
+                                    'instrumento_id': 1})
     assert papel_de(app, 'y@escola.com') == Usuario.PAPEL_ALUNO
 
 

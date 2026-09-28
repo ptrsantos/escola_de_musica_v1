@@ -13,9 +13,9 @@ from app.models import (Usuario, Instrumento, Aluno, Mensalidade, Pagamento, Aul
                         alunos_com_aula_no_dia, aniversariantes_do_dia,
                         aniversariantes_do_mes, balanco_entradas)
 from app.risco import pontuar
-from app.indicadores import (contar_presenca, indicadores_pedagogicos, marcar_presenca,
-                             ocupacao_horarios, painel_do_aluno, resumo_presenca,
-                             sem_marcador)
+from app.indicadores import (contar_presenca, financeiro_do_aluno, indicadores_pedagogicos,
+                             marcar_presenca, ocupacao_horarios, pedagogico_do_aluno,
+                             resumo_presenca, sem_marcador)
 
 MENSALIDADES_POR_PAGINA = 50
 ATENCAO_POR_PAGINA = 10        # dashboard: "alunos que pedem atenção", 10 por página
@@ -313,6 +313,54 @@ def validar_usuario(form, usuario=None, senha_obrigatoria=True):
     return dados, erros
 
 
+def ficha_do_email(email):
+    """A ficha de aluno ligada a um login: o vínculo ainda é o e-mail (defeito nº 8)."""
+    if not email:
+        return None
+    return Aluno.query.filter(func.lower(Aluno.email) == email.strip().lower()).first()
+
+
+def validar_cadastro_de_usuario(form, papel=None):
+    """(dados, erros, ficha) do cadastro de usuário — tela "Cadastrar usuário" e
+    modal "Novo usuário". Para o perfil aluno o login e a ficha nascem juntos
+    (pedido da direção, 28/09/2026): instrumento, nascimento, endereço e
+    mensalidade são validados como no cadastro de aluno. ``ficha`` é a ficha que
+    já existe com esse e-mail; nesse caso ela só é vinculada — os campos da
+    ficha não são exigidos e nada do que a gestora já cadastrou é sobrescrito.
+    ``papel`` força o perfil (primeiro acesso = gestora)."""
+    dados, erros = validar_usuario(form)
+    if papel:
+        dados['papel'] = papel
+    ficha = None
+    if dados['papel'] == Usuario.PAPEL_ALUNO:
+        if 'email' not in erros:
+            ficha = ficha_do_email(dados['email'])
+        if ficha is None:
+            dados['aluno'], erros_ficha = validar_aluno(form)
+            for campo, mensagem in erros_ficha.items():
+                erros.setdefault(campo, mensagem)
+    return dados, erros, ficha
+
+
+def gravar_cadastro_de_usuario(dados, ficha=None):
+    """Grava o login e, se for aluno sem ficha, a ficha — numa transação só."""
+    usuario = Usuario(nome=dados['nome'], email=dados['email'], papel=dados['papel'])
+    usuario.set_senha(dados['senha'])
+    db.session.add(usuario)
+    if dados['papel'] == Usuario.PAPEL_ALUNO and ficha is None:
+        db.session.add(Aluno(**dados['aluno']))
+    db.session.commit()
+    return usuario
+
+
+def mensagem_de_cadastro(usuario, ficha=None):
+    texto = f'Usuário "{usuario.nome}" cadastrado como {usuario.rotulo_papel}'
+    if usuario.is_aluno:
+        texto += (f', vinculado à ficha de aluno de {ficha.nome}' if ficha
+                  else ', com a ficha de aluno')
+    return texto + '.'
+
+
 def register_routes(app):
     # =================================================================
     # Home / autenticação (mesma estrutura do fluxo de caixa)
@@ -321,7 +369,7 @@ def register_routes(app):
     def home():
         if current_user.is_authenticated:
             if current_user.is_aluno:
-                return redirect(url_for('minha_area'))
+                return redirect(url_for('dashboard'))
             return redirect(url_for('inicio'))
         return render_template('index.html')
 
@@ -373,44 +421,30 @@ def register_routes(app):
                 flash('Apenas a gestora pode cadastrar usuários.', 'danger')
                 return redirect(url_for('dashboard'))
 
+        def tela(**extra):
+            return render_template('registrar.html', primeiro_acesso=primeiro_acesso,
+                                   instrumentos=Instrumento.query.order_by(Instrumento.nome).all(),
+                                   rotulos_papel=Usuario.ROTULOS_PAPEL, **extra)
+
         if request.method == 'POST':
-            nome = (request.form.get('nome') or '').strip()
-            email = (request.form.get('email') or '').strip().lower()
-            senha = request.form.get('senha') or ''
-
-            if primeiro_acesso:
-                papel = Usuario.PAPEL_GESTORA
-            else:
-                papel = request.form.get('papel', Usuario.PAPEL_ALUNO)
-                if papel not in (Usuario.PAPEL_GESTORA, Usuario.PAPEL_PROFESSORA,
-                                 Usuario.PAPEL_ALUNO):
-                    papel = Usuario.PAPEL_ALUNO
-
-            if not nome or not email or len(senha) < 6:
-                flash('Preencha nome, e-mail e uma senha com pelo menos 6 caracteres.', 'danger')
-                return render_template('registrar.html', primeiro_acesso=primeiro_acesso)
-
-            if Usuario.query.filter_by(email=email).first():
-                flash('Já existe um usuário com este e-mail.', 'warning')
-                return render_template('registrar.html', primeiro_acesso=primeiro_acesso)
-
-            novo_usuario = Usuario(nome=nome, email=email, papel=papel)
-            novo_usuario.set_senha(senha)
+            dados, erros, ficha = validar_cadastro_de_usuario(
+                request.form, papel=Usuario.PAPEL_GESTORA if primeiro_acesso else None)
+            if erros:
+                return tela(erros=erros, valores=request.form)
             try:
-                db.session.add(novo_usuario)
-                db.session.commit()
+                novo_usuario = gravar_cadastro_de_usuario(dados, ficha)
             except Exception as e:
                 db.session.rollback()
                 flash(f'Erro ao criar conta: {str(e)}', 'danger')
-                return render_template('registrar.html', primeiro_acesso=primeiro_acesso)
+                return tela(valores=request.form)
 
             if primeiro_acesso:
                 flash('Conta da gestora criada. Faça login para continuar.', 'success')
                 return redirect(url_for('login'))
-            flash(f'Usuário "{nome}" cadastrado como {papel}.', 'success')
+            flash(mensagem_de_cadastro(novo_usuario, ficha), 'success')
             return redirect(url_for('registrar'))
 
-        return render_template('registrar.html', primeiro_acesso=primeiro_acesso)
+        return tela()
 
     @app.route('/login', methods=['GET', 'POST'])
     def login():
@@ -426,7 +460,7 @@ def register_routes(app):
                 if next_page:
                     return redirect(next_page)
                 if usuario.is_aluno:
-                    return redirect(url_for('minha_area'))
+                    return redirect(url_for('dashboard'))
                 return redirect(url_for('inicio'))
             flash('Email ou senha inválidos.', 'danger')
         return render_template('login.html')
@@ -436,35 +470,45 @@ def register_routes(app):
         """Troca de senha a partir da tela de login. Sem envio de e-mail no
         sistema, quem troca prova que é o dono da conta com a senha atual; quem
         a esqueceu pede à gestora (tela Usuários). A mensagem de erro é a mesma
-        para e-mail inexistente e senha errada, para não revelar quem tem conta."""
+        para e-mail inexistente e senha errada, para não revelar quem tem conta.
+        Os erros vão para o campo a corrigir (padrão de acessibilidade das
+        outras telas), não para uma mensagem solta no topo."""
         email = (request.form.get('email') or
                  (current_user.email if current_user.is_authenticated else '')).strip().lower()
         if request.method == 'POST':
             atual = request.form.get('senha_atual') or ''
             nova = request.form.get('nova_senha') or ''
             confirmacao = request.form.get('confirmar_senha') or ''
-            usuario = Usuario.query.filter_by(email=email).first() if email else None
-            erro = None
-            if not (email and atual and nova and confirmacao):
-                erro = 'Preencha todos os campos.'
-            elif not usuario or not usuario.verificar_senha(atual):
-                erro = 'E-mail ou senha atual inválidos.'
+            erros = {}          # na ordem dos campos: é a ordem do resumo de erros
+            usuario = None
+            if not email:
+                erros['email'] = 'Informe o seu e-mail.'
+            if not atual:
+                erros['senha_atual'] = 'Informe a senha atual.'
+            elif email:
+                usuario = Usuario.query.filter_by(email=email).first()
+                if not usuario or not usuario.verificar_senha(atual):
+                    # Fica na senha, e não no e-mail, nos dois casos.
+                    erros['senha_atual'] = 'E-mail ou senha atual inválidos.'
+            if not nova:
+                erros['nova_senha'] = 'Informe a nova senha.'
             elif len(nova) < 6:
-                erro = 'A nova senha precisa ter pelo menos 6 caracteres.'
-            elif nova != confirmacao:
-                erro = 'A confirmação não confere com a nova senha.'
+                erros['nova_senha'] = 'A nova senha precisa ter pelo menos 6 caracteres.'
             elif nova == atual:
-                erro = 'A nova senha precisa ser diferente da atual.'
-            if erro:
-                flash(erro, 'danger')
-                return render_template('alterar_senha.html', email=email)
+                erros['nova_senha'] = 'A nova senha precisa ser diferente da atual.'
+            if not confirmacao:
+                erros['confirmar_senha'] = 'Repita a nova senha.'
+            elif nova and confirmacao != nova:
+                erros['confirmar_senha'] = 'A confirmação não confere com a nova senha.'
+            if erros:
+                return render_template('alterar_senha.html', email=email, erros=erros)
             usuario.set_senha(nova)
             db.session.commit()
             flash('Senha alterada. Entre com a nova senha.', 'success')
             if current_user.is_authenticated and current_user.id == usuario.id:
                 logout_user()
             return redirect(url_for('login'))
-        return render_template('alterar_senha.html', email=email)
+        return render_template('alterar_senha.html', email=email, erros={})
 
     @app.route('/logout')
     @login_required
@@ -592,17 +636,32 @@ def register_routes(app):
 
         return render_template('dashboard.html', **contexto)
 
+    def ficha_do_aluno_logado():
+        """A ficha de quem está logado (vínculo pelo e-mail), com o instrumento."""
+        return (Aluno.query.options(joinedload(Aluno.instrumento))
+                .filter(func.lower(Aluno.email) == current_user.email.lower()).first())
+
     def painel_aluno():
-        """Aba Dashboard do aluno (pedido da direção, 22/09/2026: a aba levava
-        direto à Minha Área). Resumo visual — presença, próxima aula, o que
-        estudar, mensalidades; as listas completas continuam na Minha Área."""
+        """Dashboard do aluno: pagamentos e inadimplência. A área do aluno foi
+        separada em três telas a pedido do professor (28/09/2026) — Dashboard,
+        Minha Área (dados pessoais) e Observações pedagógicas."""
         atualizar_status_vencidos()
-        aluno = (Aluno.query.options(joinedload(Aluno.instrumento))
-                 .filter_by(email=current_user.email).first())
+        aluno = ficha_do_aluno_logado()
         if not aluno:
             return redirect(url_for('minha_area'))   # lá aparece o aviso de cadastro não vinculado
         return render_template('dashboard_aluno.html', aluno=aluno,
-                               painel=painel_do_aluno(aluno))
+                               fin=financeiro_do_aluno(aluno, ano=request.args.get('ano', type=int)))
+
+    @app.route('/observacoes')
+    @papeis_required('aluno')
+    def observacoes():
+        """Observações pedagógicas do aluno: as aulas do mês (o vigente, ou o
+        escolhido em ?mes=AAAA-MM) com o que a professora anotou e o que estudar."""
+        aluno = ficha_do_aluno_logado()
+        if not aluno:
+            return redirect(url_for('minha_area'))
+        return render_template('observacoes_aluno.html', aluno=aluno,
+                               ped=pedagogico_do_aluno(aluno, mes=request.args.get('mes')))
 
     @app.route('/api/dashboard-data')
     @papeis_required('gestora', 'professora')
@@ -662,7 +721,16 @@ def register_routes(app):
     @papeis_required('gestora', 'professora')
     def alunos():
         busca = (request.args.get('busca') or '').strip()
-        return render_template('alunos.html', **contexto_alunos(busca=busca))
+        extra = {}
+        # "Completar a ficha" (tela Usuários): abre o novo aluno já com o nome e
+        # o e-mail do login, para o vínculo pelo e-mail funcionar.
+        completar = request.args.get('completar_usuario', type=int)
+        if completar and current_user.is_gestora:
+            usuario = db.session.get(Usuario, completar)
+            if usuario is not None and usuario.is_aluno and ficha_do_email(usuario.email) is None:
+                extra = {'valores': {'nome': usuario.nome, 'email': usuario.email},
+                         'abrir_modal': 'novoAlunoModal'}
+        return render_template('alunos.html', **contexto_alunos(busca=busca, **extra))
 
     @app.route('/adicionar_aluno', methods=['POST'])
     @papeis_required('gestora')
@@ -992,15 +1060,17 @@ def register_routes(app):
     @app.route('/minha-area')
     @papeis_required('aluno')
     def minha_area():
-        atualizar_status_vencidos()
-        aluno = Aluno.query.filter_by(email=current_user.email).first()
+        """Dados pessoais do aluno (pedido da direção, 28/09/2026: "eles não
+        conseguem ver seus dados"). Só consulta: quem corrige é a secretaria.
+        Mensalidades foram para o Dashboard; aulas, para Observações pedagógicas."""
+        aluno = ficha_do_aluno_logado()
         if not aluno:
             flash('Seu usuário ainda não está vinculado a um cadastro de aluno.', 'warning')
-            return render_template('minha_area.html', aluno=None, mensalidades=[], aulas=[])
-        mensalidades = (Mensalidade.query.filter_by(aluno_id=aluno.id)
-                        .order_by(Mensalidade.vencimento.desc()).all())
-        aulas = Aula.query.filter_by(aluno_id=aluno.id).order_by(Aula.data.desc()).all()
-        return render_template('minha_area.html', aluno=aluno, mensalidades=mensalidades, aulas=aulas)
+            return render_template('minha_area.html', aluno=None)
+        professora = db.session.scalar(
+            select(Aula.professora).where(Aula.aluno_id == aluno.id)
+            .order_by(Aula.data.desc(), Aula.id.desc()).limit(1))
+        return render_template('minha_area.html', aluno=aluno, professora=professora)
 
     # =================================================================
     # Relatórios (gestora) — visão consolidada
@@ -1081,24 +1151,29 @@ def register_routes(app):
         return render_template('usuarios.html', **contexto_usuarios())
 
     def contexto_usuarios(**extra):
+        usuarios = Usuario.query.order_by(Usuario.nome).all()
+        # Logins de aluno sem ficha de aluno (o vínculo é o e-mail): a lista
+        # oferece "Completar a ficha" — ex.: um aluno criado antes de 28/09.
+        emails_com_ficha = {e for (e,) in db.session.execute(
+            select(func.lower(Aluno.email)).where(Aluno.email.is_not(None)))}
         return {
-            'usuarios': Usuario.query.order_by(Usuario.nome).all(),
-            'papeis': [Usuario.PAPEL_GESTORA, Usuario.PAPEL_PROFESSORA, Usuario.PAPEL_ALUNO],
+            'usuarios': usuarios,
+            'sem_ficha': {u.id for u in usuarios
+                          if u.is_aluno and u.email.lower() not in emails_com_ficha},
+            'rotulos_papel': Usuario.ROTULOS_PAPEL,
+            'instrumentos': Instrumento.query.order_by(Instrumento.nome).all(),
             **extra,
         }
 
     @app.route('/adicionar_usuario', methods=['POST'])
     @papeis_required('gestora')
     def adicionar_usuario():
-        dados, erros = validar_usuario(request.form)
+        dados, erros, ficha = validar_cadastro_de_usuario(request.form)
         if erros:
             return render_template('usuarios.html', **contexto_usuarios(
                 erros=erros, valores=request.form, abrir_modal='novoUsuarioModal'))
-        novo = Usuario(nome=dados['nome'], email=dados['email'], papel=dados['papel'])
-        novo.set_senha(dados['senha'])
-        db.session.add(novo)
-        db.session.commit()
-        flash('Usuário criado com sucesso!', 'success')
+        novo = gravar_cadastro_de_usuario(dados, ficha)
+        flash(mensagem_de_cadastro(novo, ficha), 'success')
         return redirect(url_for('usuarios'))
 
     @app.route('/editar_usuario/<int:id>', methods=['POST'])
@@ -1110,6 +1185,12 @@ def register_routes(app):
             return render_template('usuarios.html', **contexto_usuarios(
                 erros=erros, valores=request.form, abrir_modal='editarUsuarioModal',
                 usuario_em_edicao=usuario))
+        # O login do aluno acha a ficha pelo e-mail (defeito nº 8): trocar o
+        # e-mail só no usuário desligaria o aluno dos próprios dados.
+        if usuario.is_aluno and dados['email'] != usuario.email.lower():
+            ficha = ficha_do_email(usuario.email)
+            if ficha is not None and ficha_do_email(dados['email']) is None:
+                ficha.email = dados['email']
         usuario.nome = dados['nome']
         usuario.email = dados['email']
         usuario.papel = dados['papel']

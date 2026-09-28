@@ -1,6 +1,8 @@
 """
-Painel do aluno (aba Dashboard do perfil aluno, pedido da direção de 22/09):
-agregação em app/indicadores.py, cor e emoji por instrumento e a tela.
+Área do aluno: cor e emoji por instrumento (pedido da direção de 22/09) e as três
+telas pedidas pelo professor em 28/09 — Dashboard (pagamentos e inadimplência),
+Minha Área (dados pessoais) e Observações pedagógicas (aulas do mês). Agregação
+em app/indicadores.py.
 """
 from datetime import date, datetime, time, timedelta
 
@@ -8,7 +10,8 @@ from sqlalchemy import event
 
 from app import db, visual_de_instrumento, INSTRUMENTO_VISUAL_PADRAO
 from app.models import Aluno, Aula, Mensalidade, Pagamento, Usuario
-from app.indicadores import painel_do_aluno, proxima_aula, rotulo_dia, situacao_presenca
+from app.indicadores import (financeiro_do_aluno, pedagogico_do_aluno, proxima_aula,
+                             rotulo_dia, situacao_presenca)
 
 from conftest import novo_aluno, novo_usuario, login, logar_aluno, texto
 
@@ -62,30 +65,38 @@ def mensalidade(aluno, vencimento, status, valor=250.0, pago=0.0):
     db.session.add(m)
 
 
-def test_painel_do_aluno_agrega_aulas_e_mensalidades(app):
+def ana_com_historico():
+    ana = novo_aluno('Ana', 'Violino')
+    ana.dia_aula_semana, ana.hora_aula = 2, time(14, 0)            # quarta, 14h
+    aula(ana, date(2026, 9, 23), 'Presença: 1P/0A · Afinação melhorou.')      # a última
+    aula(ana, date(2026, 9, 16), 'Presença: 0P/1A', 'Escala de Ré maior.')    # para estudar
+    aula(ana, date(2026, 8, 10), 'Trabalhou o arco.', 'Estudo 12')            # sem marcação
+    aula(ana, date(2026, 2, 5), 'Presença: 1P/0A')                 # no ano, fora dos 6 meses
+    aula(ana, date(2025, 12, 1), 'Presença: 0P/1A', professora='Outra')       # ano passado
+    mensalidade(ana, date(2025, 9, 10), 'pago', pago=250.0)        # fora da janela de 12 meses
+    mensalidade(ana, date(2026, 8, 10), 'em atraso', pago=100.0)   # R$ 150 em aberto
+    mensalidade(ana, date(2026, 9, 10), 'pago', pago=250.0)
+    mensalidade(ana, date(2026, 11, 10), 'pendente')
+    mensalidade(ana, date(2026, 10, 10), 'pendente', valor=260.0)  # a próxima
+    db.session.commit()
+    return db.session.get(Aluno, ana.id)
+
+
+def test_pedagogico_do_aluno(app):
     with app.app_context():
-        ana = novo_aluno('Ana', 'Violino')
-        ana.dia_aula_semana, ana.hora_aula = 2, time(14, 0)            # quarta, 14h
-        aula(ana, date(2026, 9, 23), 'Presença: 1P/0A · Afinação melhorou.')      # a última
-        aula(ana, date(2026, 9, 16), 'Presença: 0P/1A', 'Escala de Ré maior.')    # para estudar
-        aula(ana, date(2026, 8, 10), 'Trabalhou o arco.', 'Estudo 12')            # sem marcação
-        aula(ana, date(2026, 2, 5), 'Presença: 1P/0A')                 # no ano, fora dos 6 meses
-        aula(ana, date(2025, 12, 1), 'Presença: 0P/1A', professora='Outra')       # ano passado
-        mensalidade(ana, date(2026, 8, 10), 'em atraso', pago=100.0)   # R$ 150 em aberto
-        mensalidade(ana, date(2026, 9, 10), 'pago', pago=250.0)
-        mensalidade(ana, date(2026, 11, 10), 'pendente')
-        mensalidade(ana, date(2026, 10, 10), 'pendente', valor=260.0)  # a próxima
-        db.session.commit()
+        ana = ana_com_historico()
+        p = pedagogico_do_aluno(ana, agora=AGORA)
 
-        p = painel_do_aluno(db.session.get(Aluno, ana.id), agora=AGORA)
-
-        assert p['ano'] == 2026
+        assert p['ano'] == 2026 and p['mes'] == '2026-09' and p['mes_rotulo'] == 'setembro de 2026'
+        assert p['mes_anterior'] == '2026-08' and p['mes_seguinte'] is None
+        assert [a['data'] for a in p['aulas_do_mes']] == [date(2026, 9, 23), date(2026, 9, 16)]
+        assert p['aulas_do_mes'][0]['observacao'] == 'Afinação melhorou.'    # sem o marcador
+        assert p['presenca_mes'] == {'aulas': 2, 'presencas': 1, 'faltas': 1, 'taxa': 0.5}
         assert p['presenca'] == {'aulas': 3, 'presencas': 2, 'faltas': 1, 'taxa': 2 / 3}
         assert p['proxima_aula'] == date(2026, 9, 30) and p['proxima_aula_rotulo'] == 'Qua, 30/09'
         assert p['professora'] == 'Flávia'
         assert p['ultima_aula']['data'] == date(2026, 9, 23)
         assert p['ultima_aula']['presenca'] == 'presente'
-        assert p['ultima_aula']['observacao'] == 'Afinação melhorou.'      # sem o marcador
         estudar = p['para_estudar']
         assert estudar['data'] == date(2026, 9, 16)
         assert estudar['orientacao'] == 'Escala de Ré maior.' and estudar['observacao'] == ''
@@ -96,22 +107,53 @@ def test_painel_do_aluno_agrega_aulas_e_mensalidades(app):
         assert meses['faltas'] == [0, 0, 0, 0, 0, 1]
         assert meses['sem_registro'] == [0, 0, 0, 0, 1, 0]
         assert meses['total'] == 3
+        assert 'Total: 1 presença, 1 falta e 1 aula sem presença registrada.' in meses['descricao']
 
-        m = p['mensalidades']
-        assert m['em_atraso'] == 1 and m['valor_em_aberto'] == 150.0
-        assert m['proxima'].vencimento == date(2026, 10, 10) and m['proxima'].valor == 260.0
+        agosto = pedagogico_do_aluno(ana, mes='2026-08', agora=AGORA)
+        assert [a['orientacao'] for a in agosto['aulas_do_mes']] == ['Estudo 12']
+        assert agosto['mes_seguinte'] == '2026-09' and agosto['presenca_mes']['taxa'] is None
+        # Mês no futuro ou em formato errado cai no mês vigente.
+        for mes in ('2026-10', '2026-13', 'setembro', None):
+            assert pedagogico_do_aluno(ana, mes=mes, agora=AGORA)['mes'] == '2026-09'
+        assert pedagogico_do_aluno(ana, mes='2026-01', agora=AGORA)['mes_anterior'] == '2025-12'
 
 
-def test_painel_do_aluno_sem_nada(app):
+def test_financeiro_do_aluno(app):
+    with app.app_context():
+        ana = ana_com_historico()
+        f = financeiro_do_aluno(ana, agora=AGORA)
+
+        assert [(i['mensalidade'].competencia, i['falta']) for i in f['em_atraso']] == [('2026-08', 150.0)]
+        assert f['valor_em_aberto'] == 150.0
+        assert f['proxima'].vencimento == date(2026, 10, 10) and f['proxima'].valor == 260.0
+        assert f['pago_no_ano'] == 350.0                          # 100 + 250, pelo vencimento
+        assert (f['quitadas_no_ano'], f['do_ano']) == (1, 4)
+        assert f['anos'] == [2026, 2025] and f['ano'] == 2026
+        assert [m.competencia for m in f['lista']] == ['2026-11', '2026-10', '2026-09', '2026-08']
+
+        g = f['por_mes']
+        assert g['rotulos'][0] == 'out/25' and g['rotulos'][-1] == 'set/26' and len(g['rotulos']) == 12
+        assert g['pago'][-2:] == [100.0, 250.0] and g['atraso'][-2:] == [150.0, 0.0]
+        assert sum(g['a_vencer']) == 0                              # as pendentes vencem depois
+        assert g['total'] == 500.0
+        assert 'Total: R$ 350,00 pago, R$ 150,00 em atraso.' in g['descricao']
+
+        assert [m.competencia for m in financeiro_do_aluno(ana, ano=2025, agora=AGORA)['lista']] == ['2025-09']
+        assert financeiro_do_aluno(ana, ano=1999, agora=AGORA)['ano'] == 2026   # ano sem mensalidade
+
+
+def test_area_do_aluno_sem_nada(app):
     with app.app_context():
         eva = novo_aluno('Eva', 'Canto')
         db.session.commit()
-        p = painel_do_aluno(db.session.get(Aluno, eva.id), agora=AGORA)
-        assert p['presenca']['taxa'] is None
+        p = pedagogico_do_aluno(db.session.get(Aluno, eva.id), agora=AGORA)
+        assert p['presenca']['taxa'] is None and p['aulas_do_mes'] == []
         assert p['proxima_aula'] is None and p['proxima_aula_rotulo'] is None
         assert p['ultima_aula'] is None and p['para_estudar'] is None and p['professora'] is None
         assert p['aulas_por_mes']['total'] == 0
-        assert p['mensalidades'] == {'em_atraso': 0, 'valor_em_aberto': 0.0, 'proxima': None}
+        f = financeiro_do_aluno(db.session.get(Aluno, eva.id), agora=AGORA)
+        assert f['em_atraso'] == [] and f['proxima'] is None and f['lista'] == []
+        assert f['por_mes']['total'] == 0 and f['anos'] == [] and f['ano'] == 2026
 
 
 def conteudo(resposta):
@@ -119,22 +161,28 @@ def conteudo(resposta):
     return texto(resposta).split('class="main-content"', 1)[1]
 
 
-def test_aluno_ve_o_proprio_painel(dados, client):
+def test_aluno_ve_as_tres_areas(dados, client):
     logar_aluno(client)
-    r = client.get('/dashboard')
-    assert r.status_code == 200
-    html = conteudo(r)
+    html = conteudo(client.get('/dashboard'))                  # pagamentos
     assert 'Olá, Ana Silva' in html and 'Violão' in html and '🎸' in html
     assert 'Em dia' in html                    # 4 pagas + 1 pendente que vence em 20 dias
+    assert 'mensalidadesChart' in html and 'Mensalidades em atraso' not in html
+    assert 'aulasMesChart' not in html                         # as aulas foram para Observações
+
+    html = conteudo(client.get('/observacoes'))                # aulas e o que estudar
     assert 'aulasMesChart' in html             # a aula de 5 dias atrás entra no gráfico
     dia_da_aula = (date.today() - timedelta(days=5)).strftime('%d/%m/%Y')
-    assert f'Aula de {dia_da_aula} · Flávia' in html   # "para estudar" da aula do conjunto
+    assert f'Aula de {dia_da_aula} · Flávia' in html           # "para estudar agora"
     assert 'sem horário fixo' in html
-    assert 'href="/minha-area"' in html
-    assert 'risco' not in html.lower()         # o risco de evasão é da escola, não do aluno
+
+    html = conteudo(client.get('/minha-area'))                 # dados pessoais
+    assert 'Meus dados' in html and 'ana@aluno.com' in html and 'Minhas mensalidades' not in html
+
+    for rota in ('/dashboard', '/observacoes', '/minha-area'):
+        assert 'risco' not in conteudo(client.get(rota)).lower()   # o risco é da escola
 
 
-def test_painel_mostra_atraso_e_exige_cadastro_vinculado(dados, app, client):
+def test_dashboard_mostra_atraso_e_exige_cadastro_vinculado(dados, app, client):
     with app.app_context():
         novo_usuario('Bruno Costa', 'bruno@aluno.com', Usuario.PAPEL_ALUNO)
         db.session.get(Aluno, dados['bruno']).email = 'bruno@aluno.com'
@@ -144,12 +192,19 @@ def test_painel_mostra_atraso_e_exige_cadastro_vinculado(dados, app, client):
     login(client, 'bruno@aluno.com')
     html = conteudo(client.get('/dashboard'))
     assert '2 em atraso' in html and 'R$ 600,00 em aberto' in html     # Piano, 2 x R$ 300
-    assert '🎹' in html
+    assert 'Mensalidades em atraso' in html and '🎹' in html
 
     client.get('/logout')
     login(client, 'sem@aluno.com')
-    r = client.get('/dashboard')
-    assert r.status_code == 302 and r.headers['Location'].endswith('/minha-area')
+    for rota in ('/dashboard', '/observacoes'):
+        r = client.get(rota)
+        assert r.status_code == 302 and r.headers['Location'].endswith('/minha-area')
+    assert 'Cadastro ainda não vinculado' in texto(client.get('/minha-area'))
+
+
+def test_login_do_aluno_vai_para_o_dashboard(dados, client):
+    r = logar_aluno(client)
+    assert r.status_code == 302 and r.headers['Location'].endswith('/dashboard')
 
 
 def test_minha_area_tem_a_cor_do_instrumento(dados, client):
@@ -159,18 +214,19 @@ def test_minha_area_tem_a_cor_do_instrumento(dados, client):
     assert violao['emoji'] in html and violao['cor'] in html
 
 
-def test_painel_do_aluno_faz_poucas_consultas(dados, app, client):
+def test_area_do_aluno_faz_poucas_consultas(dados, app, client):
     logar_aluno(client)
-    client.get('/dashboard')                   # aquece a sessão e o cache de templates
     with app.app_context():
         engine = db.engine
-    consultas = []
+    for rota in ('/dashboard', '/observacoes', '/minha-area'):
+        client.get(rota)                       # aquece a sessão e o cache de templates
+        consultas = []
 
-    def contar(*_):
-        consultas.append(1)
-    event.listen(engine, 'before_cursor_execute', contar)
-    try:
-        assert client.get('/dashboard').status_code == 200
-    finally:
-        event.remove(engine, 'before_cursor_execute', contar)
-    assert len(consultas) <= 8
+        def contar(*_):
+            consultas.append(1)
+        event.listen(engine, 'before_cursor_execute', contar)
+        try:
+            assert client.get(rota).status_code == 200
+        finally:
+            event.remove(engine, 'before_cursor_execute', contar)
+        assert len(consultas) <= 8, rota
