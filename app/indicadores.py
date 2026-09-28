@@ -215,6 +215,31 @@ def rotulo_dia(dia, hoje):
     return f"{DIAS_SEMANA[dia.weekday()][:3]}, {dia.strftime('%d/%m')}"
 
 
+def _contagem(n, singular, plural):
+    return f'{n} {singular if n == 1 else plural}'
+
+
+def _descrever_mes(presencas, faltas, sem_registro):
+    partes = [texto for n, texto in (
+        (presencas, _contagem(presencas, 'presença', 'presenças')),
+        (faltas, _contagem(faltas, 'falta', 'faltas')),
+        (sem_registro, _contagem(sem_registro, 'aula sem presença registrada',
+                                 'aulas sem presença registrada'))) if n]
+    if not partes:
+        return 'nenhuma aula'
+    return ', '.join(partes[:-1]) + ' e ' + partes[-1] if len(partes) > 1 else partes[0]
+
+
+def descrever_aulas_por_mes(refs, presencas, faltas, sem_registro):
+    """Texto do gráfico "Aulas por mês" para leitor de tela, com os mesmos
+    números do gráfico e os meses em MM/AAAA — o padrão das descrições de
+    tendência do dashboard (``routes.descricoes_tendencia``)."""
+    meses = '; '.join(f'{ref[5:]}/{ref[:4]}: {_descrever_mes(p, f, s)}'
+                      for ref, p, f, s in zip(refs, presencas, faltas, sem_registro))
+    total = _descrever_mes(sum(presencas), sum(faltas), sum(sem_registro))
+    return f'Aulas nos últimos {len(refs)} meses. {meses}. Total: {total}.'
+
+
 def _resumo_aula(aula):
     if aula is None:
         return None
@@ -267,6 +292,7 @@ def painel_do_aluno(aluno, agora=None, meses=6):
         select(Mensalidade)
         .where(Mensalidade.aluno_id == aluno.id, Mensalidade.status == 'pendente')
         .order_by(Mensalidade.vencimento).limit(1)).first()
+    presencas, faltas, sem_registro = ([por_mes[ref][i] for ref in refs] for i in range(3))
 
     return {
         'ano': hoje.year,
@@ -278,10 +304,11 @@ def painel_do_aluno(aluno, agora=None, meses=6):
         'professora': ultima.professora if ultima else None,
         'aulas_por_mes': {
             'rotulos': [f"{MESES_ABREV[int(ref[5:]) - 1]}/{ref[2:4]}" for ref in refs],
-            'presencas': [por_mes[ref][0] for ref in refs],
-            'faltas': [por_mes[ref][1] for ref in refs],
-            'sem_registro': [por_mes[ref][2] for ref in refs],
+            'presencas': presencas,
+            'faltas': faltas,
+            'sem_registro': sem_registro,
             'total': sum(sum(v) for v in por_mes.values()),
+            'descricao': descrever_aulas_por_mes(refs, presencas, faltas, sem_registro),
         },
         'mensalidades': {
             'em_atraso': aluno.qtd_em_atraso or 0,

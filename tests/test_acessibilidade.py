@@ -22,7 +22,7 @@ from conftest import logar_gestora, logar_professora, logar_aluno
 PAGINAS_GESTORA = ['/inicio', '/dashboard', '/alunos', '/financeiro', '/relatorios',
                    '/acompanhamento', '/instrumentos', '/usuarios', '/registrar']
 PAGINAS_PROFESSORA = ['/inicio', '/dashboard', '/alunos', '/acompanhamento']
-PAGINAS_ANONIMAS = ['/', '/login']
+PAGINAS_ANONIMAS = ['/', '/login', '/alterar-senha']
 
 # Tipos de input que não precisam de rótulo visível para o usuário.
 TIPOS_SEM_ROTULO = {'hidden', 'submit', 'button', 'reset', 'image', 'csrf_token'}
@@ -962,3 +962,94 @@ def test_foco_vai_para_o_resumo_de_erros_ao_reexibir(dados, client):
     # E o script que move o foco ao abrir o modal está presente.
     html = resposta.get_data(as_text=True)
     assert 'shown.bs.modal' in html and '.focus()' in html
+
+
+# ---------------------------------------------------------------------------
+# Painel do aluno e troca de senha — telas de 24/09, postas no padrão acima
+# em 28/09. /alterar-senha também entrou em PAGINAS_ANONIMAS.
+# ---------------------------------------------------------------------------
+def test_painel_do_aluno_segue_o_padrao(dados, client):
+    logar_aluno(client)
+    rota = '/dashboard (aluno)'
+    arvore = sopa(client, '/dashboard')
+    verificar_landmarks(arvore, rota)
+    verificar_nomes_de_controles(arvore, rota)
+    verificar_tabelas(arvore, rota)
+    verificar_html_sem_aspas_escapadas(client, '/dashboard')
+
+    niveis = [int(t.name[1]) for t in arvore.select('h1, h2, h3, h4, h5, h6')]
+    assert niveis[0] == 1, f'{rota}: primeiro título é h{niveis[0]}, não h1'
+    for anterior, atual in zip(niveis, niveis[1:]):
+        assert atual <= anterior + 1, f'{rota}: salto de h{anterior} para h{atual}'
+
+    expostos = [str(i)[:80] for i in arvore.select('i.fas, i.far, i.fab, i.bi')
+                if i.get('aria-hidden') != 'true']
+    assert not expostos, f'{rota}: ícone(s) decorativo(s) sem aria-hidden: {expostos}'
+    assert not arvore.select('.text-warning'), f'{rota}: texto usando .text-warning'
+
+
+def test_grafico_do_painel_do_aluno_tem_alternativa_textual(dados, client):
+    """Conjunto ``dados``: a Ana tem uma aula há 5 dias, sem marcador de
+    presença — nos 6 meses, 0 presenças, 0 faltas e 1 aula sem registro."""
+    logar_aluno(client)
+    resposta = client.get('/dashboard')
+    arvore = BeautifulSoup(resposta.get_data(as_text=True), 'html.parser')
+    grafico = arvore.find(id='aulasMesChart')
+    assert grafico is not None, 'gráfico de aulas por mês não renderizado'
+    assert grafico.get('role') == 'img' and len(grafico.get('aria-label') or '') > 30
+
+    figura = grafico.find_parent('figure')
+    assert figura is not None, 'canvas fora de <figure>'
+    descricao = arvore.find(id=grafico.get('aria-describedby'))
+    assert descricao is not None and descricao.find_parent('figure') is figura
+    assert 'Total: 1 aula sem presença registrada.' in descricao.get_text()
+
+    tabela = figura.select_one('figcaption details table')
+    assert tabela is not None, 'sem tabela equivalente em <details>'
+    assert figura.select_one('figcaption details summary').get_text(strip=True)
+    linhas = tabela.select('tbody tr')
+    assert len(linhas) == 6, 'a tabela deveria ter os 6 meses do gráfico'
+    colunas = list(zip(*[[int(td.get_text()) for td in tr.find_all('td')] for tr in linhas]))
+    assert [sum(c) for c in colunas] == [0, 0, 1]      # presenças, faltas, sem registro
+
+    assert '...semAnimacao' in resposta.get_data(as_text=True), \
+        'o gráfico precisa respeitar prefers-reduced-motion'
+
+
+def test_erro_da_troca_de_senha_fica_associado_ao_campo(dados, client):
+    resposta = client.post('/alterar-senha', data={
+        'email': 'professora@escola.com', 'senha_atual': 'errada',
+        'nova_senha': 'nova-senha', 'confirmar_senha': 'nova-senha'})
+    assert resposta.status_code == 200, 'erro de validação não deve redirecionar'
+    arvore = BeautifulSoup(resposta.get_data(as_text=True), 'html.parser')
+
+    resumo = arvore.select_one('.alert[role="alert"][tabindex="-1"]')
+    assert resumo is not None, 'sem resumo de erros com role="alert"'
+    assert resumo.find('a', href='#campo-senha_atual') is not None
+
+    invalido = arvore.find(id='campo-senha_atual')
+    assert invalido.get('aria-invalid') == 'true'
+    assert 'campo-senha_atual-erro' in (invalido.get('aria-describedby') or '').split()
+    assert arvore.find(id='campo-senha_atual-erro').get_text(strip=True) == \
+        'E-mail ou senha atual inválidos.'
+    # O e-mail não é marcado: a mensagem não diz qual dos dois está errado.
+    assert arvore.find(id='campo-email').get('aria-invalid') is None
+    assert arvore.find(id='campo-email').get('value') == 'professora@escola.com'
+    for nome in ('senha_atual', 'nova_senha', 'confirmar_senha'):
+        assert arvore.find(id=f'campo-{nome}').get('value') == '', \
+            f'a senha {nome} não pode voltar preenchida'
+
+
+def test_troca_de_senha_marca_cada_campo_invalido(dados, client):
+    resposta = client.post('/alterar-senha', data={
+        'email': 'professora@escola.com', 'senha_atual': 'errada',
+        'nova_senha': '123', 'confirmar_senha': '321'})
+    arvore = BeautifulSoup(resposta.get_data(as_text=True), 'html.parser')
+    for nome in ('senha_atual', 'nova_senha', 'confirmar_senha'):
+        assert arvore.find(id=f'campo-{nome}').get('aria-invalid') == 'true', nome
+    # A ajuda "Pelo menos 6 caracteres." continua ligada ao campo, junto do erro.
+    assert arvore.find(id='campo-nova_senha').get('aria-describedby').split() == \
+        ['campo-nova_senha-ajuda', 'campo-nova_senha-erro']
+    # O resumo segue a ordem do formulário.
+    assert [a['href'] for a in arvore.select('#resumo-erros a')] == \
+        ['#campo-senha_atual', '#campo-nova_senha', '#campo-confirmar_senha']

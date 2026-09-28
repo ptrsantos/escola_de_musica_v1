@@ -2,12 +2,7 @@
 
 {% block title %}Meu painel{% endblock %}
 
-{% block content %}
-{# Painel do aluno (pedido da direção, 22/09/2026): resumo de uma olhada. As
-   listas completas de aulas e mensalidades ficam na Minha Área. O risco de
-   evasão não aparece aqui — é ferramenta da escola, não do aluno. #}
-{% set visual = aluno.instrumento.nome|visual_instrumento %}
-{% set p = painel %}
+{% block style %}
 <style>
     .painel-cabecalho { border-radius: 12px; }
     .painel-emoji {
@@ -15,73 +10,87 @@
         background: #fff; font-size: 2.2rem; line-height: 1;
         display: flex; align-items: center; justify-content: center;
     }
-    .painel-metrica .rotulo { font-size: 0.85rem; color: #6c757d; }
+    /* O rótulo do card é o título dele (<h2>), com a aparência discreta de antes. */
+    .painel-metrica .rotulo { font-size: 0.85rem; font-weight: 400; color: #6c757d; margin-bottom: 0.25rem; }
     .painel-metrica .valor { font-size: 1.6rem; font-weight: 600; line-height: 1.2; }
     .painel-metrica .detalhe { font-size: 0.8rem; color: #6c757d; }
     .painel-texto { white-space: pre-line; }
+    /* .text-warning (#ffc107) tem 1,63:1 sobre branco e não serve para texto;
+       este tom dá 5,54:1 (o mesmo do dashboard). */
+    .texto-atencao { color: #8a6100; }
 </style>
+{% endblock %}
 
+{% block content %}
+{# Painel do aluno (pedido da direção, 22/09/2026): resumo de uma olhada. As
+   listas completas de aulas e mensalidades ficam na Minha Área. O risco de
+   evasão não aparece aqui — é ferramenta da escola, não do aluno.
+   Acessibilidade no padrão do Paulo (docs/acessibilidade.md): um <h1>, os cards
+   com título <h2> e número em <p>, ícones decorativos ocultos e o gráfico com
+   alternativa textual. #}
+{% set visual = aluno.instrumento.nome|visual_instrumento %}
+{% set p = painel %}
 <div class="painel-cabecalho d-flex align-items-center gap-3 p-3 p-md-4 mb-4"
      style="background: {{ visual.fundo }}; border: 1px solid {{ visual.cor }}40; color: {{ visual.cor }};">
     <div class="painel-emoji" aria-hidden="true">{{ visual.emoji }}</div>
     <div>
-        <h2 class="mb-1" style="color: {{ visual.cor }};">Olá, {{ current_user.nome }}</h2>
-        <div>
+        <h1 class="h2 mb-1" style="color: {{ visual.cor }};">Olá, {{ current_user.nome }}</h1>
+        <p class="mb-0">
             <strong>{{ aluno.instrumento.nome }}</strong>
             {% if aluno.horario_aula %} · aula fixa: {{ aluno.horario_aula }}{% endif %}
             {% if p.professora %} · professora {{ p.professora }}{% endif %}
-        </div>
+        </p>
     </div>
 </div>
 
 <div class="row g-3 mb-4">
     <div class="col-6 col-lg-3">
         <div class="card shadow-sm border-0 h-100 painel-metrica"><div class="card-body">
-            <div class="rotulo"><i class="fas fa-user-check me-1"></i>Presença em {{ p.ano }}</div>
+            <h2 class="rotulo"><i class="fas fa-user-check me-1" aria-hidden="true"></i>Presença em {{ p.ano }}</h2>
             {% if p.presenca.taxa is not none %}
             {% set taxa = p.presenca.taxa %}
-            <div class="valor {{ 'text-success' if taxa >= 0.75 else ('text-warning' if taxa >= 0.5 else 'text-danger') }}">{{ '%.0f'|format(taxa * 100) }}%</div>
-            <div class="detalhe">{{ p.presenca.presencas }} presença{{ 's' if p.presenca.presencas != 1 }} · {{ p.presenca.faltas }} falta{{ 's' if p.presenca.faltas != 1 }}</div>
+            <p class="h2 valor mb-0 {{ 'text-success' if taxa >= 0.75 else ('texto-atencao' if taxa >= 0.5 else 'text-danger') }}">{{ '%.0f'|format(taxa * 100) }}%</p>
+            <p class="detalhe mb-0">{{ p.presenca.presencas }} presença{{ 's' if p.presenca.presencas != 1 }} · {{ p.presenca.faltas }} falta{{ 's' if p.presenca.faltas != 1 }}</p>
             {% else %}
-            <div class="valor text-muted">—</div>
-            <div class="detalhe">nenhuma presença registrada no ano</div>
+            <p class="h2 valor mb-0 text-muted">—</p>
+            <p class="detalhe mb-0">nenhuma presença registrada no ano</p>
             {% endif %}
         </div></div>
     </div>
     <div class="col-6 col-lg-3">
         <div class="card shadow-sm border-0 h-100 painel-metrica"><div class="card-body">
-            <div class="rotulo"><i class="fas fa-calendar-day me-1"></i>Próxima aula</div>
+            <h2 class="rotulo"><i class="fas fa-calendar-day me-1" aria-hidden="true"></i>Próxima aula</h2>
             {% if p.proxima_aula %}
-            <div class="valor">{{ p.proxima_aula_rotulo }}</div>
-            <div class="detalhe">{{ 'às ' ~ aluno.hora_aula.strftime('%H:%M') if aluno.hora_aula else 'horário a combinar' }}</div>
+            <p class="h2 valor mb-0">{{ p.proxima_aula_rotulo }}</p>
+            <p class="detalhe mb-0">{{ 'às ' ~ aluno.hora_aula.strftime('%H:%M') if aluno.hora_aula else 'horário a combinar' }}</p>
             {% else %}
-            <div class="valor text-muted">—</div>
-            <div class="detalhe">sem horário fixo cadastrado</div>
+            <p class="h2 valor mb-0 text-muted">—</p>
+            <p class="detalhe mb-0">sem horário fixo cadastrado</p>
             {% endif %}
         </div></div>
     </div>
     <div class="col-6 col-lg-3">
         <div class="card shadow-sm border-0 h-100 painel-metrica"><div class="card-body">
-            <div class="rotulo"><i class="fas fa-music me-1"></i>Última aula</div>
+            <h2 class="rotulo"><i class="fas fa-music me-1" aria-hidden="true"></i>Última aula</h2>
             {% if p.ultima_aula %}
-            <div class="valor">{{ p.ultima_aula.data.strftime('%d/%m') }}</div>
-            <div class="detalhe">{{ p.ultima_aula.presenca }}</div>
+            <p class="h2 valor mb-0">{{ p.ultima_aula.data.strftime('%d/%m') }}</p>
+            <p class="detalhe mb-0">{{ p.ultima_aula.presenca }}</p>
             {% else %}
-            <div class="valor text-muted">—</div>
-            <div class="detalhe">nenhuma aula registrada</div>
+            <p class="h2 valor mb-0 text-muted">—</p>
+            <p class="detalhe mb-0">nenhuma aula registrada</p>
             {% endif %}
         </div></div>
     </div>
     <div class="col-6 col-lg-3">
         <div class="card shadow-sm border-0 h-100 painel-metrica"><div class="card-body">
-            <div class="rotulo"><i class="fas fa-wallet me-1"></i>Mensalidades</div>
+            <h2 class="rotulo"><i class="fas fa-wallet me-1" aria-hidden="true"></i>Mensalidades</h2>
             {% set m = p.mensalidades %}
             {% if m.em_atraso %}
-            <div class="valor text-danger">{{ m.em_atraso }} em atraso</div>
-            <div class="detalhe">R$ {{ m.valor_em_aberto|moeda }} em aberto</div>
+            <p class="h2 valor mb-0 text-danger">{{ m.em_atraso }} em atraso</p>
+            <p class="detalhe mb-0">R$ {{ m.valor_em_aberto|moeda }} em aberto</p>
             {% else %}
-            <div class="valor text-success">Em dia</div>
-            <div class="detalhe">{% if m.proxima %}próxima vence {{ m.proxima.vencimento.strftime('%d/%m') }} · R$ {{ m.proxima.valor|moeda }}{% else %}nenhuma pendente{% endif %}</div>
+            <p class="h2 valor mb-0 text-success">Em dia</p>
+            <p class="detalhe mb-0">{% if m.proxima %}próxima vence {{ m.proxima.vencimento.strftime('%d/%m') }} · R$ {{ m.proxima.valor|moeda }}{% else %}nenhuma pendente{% endif %}</p>
             {% endif %}
         </div></div>
     </div>
@@ -90,10 +99,32 @@
 <div class="row g-3 mb-3">
     <div class="col-lg-7">
         <div class="card shadow-sm border-0 h-100">
-            <div class="card-header bg-white"><h5 class="mb-0">Aulas por mês</h5></div>
+            <div class="card-header bg-white"><h2 class="h5 mb-0">Aulas por mês</h2></div>
             <div class="card-body">
-                {% if p.aulas_por_mes.total %}
-                <div style="position: relative; height: 240px;"><canvas id="aulasMesChart"></canvas></div>
+                {% set a = p.aulas_por_mes %}
+                {% if a.total %}
+                <figure class="mb-0">
+                    <div style="position: relative; height: 240px;">
+                        <canvas id="aulasMesChart" role="img"
+                                aria-label="Gráfico de barras empilhadas com as presenças, as faltas e as aulas sem presença registrada em cada um dos últimos {{ a.rotulos|length }} meses. Os números estão na tabela abaixo."
+                                aria-describedby="desc-aulas-mes"></canvas>
+                    </div>
+                    <figcaption class="mt-2">
+                        <p class="visually-hidden" id="desc-aulas-mes">{{ a.descricao }}</p>
+                        <details>
+                            <summary>Ver dados em tabela</summary>
+                            <table class="table table-sm mt-2 mb-0">
+                                <caption class="visually-hidden">Presenças, faltas e aulas sem presença registrada por mês, nos últimos {{ a.rotulos|length }} meses</caption>
+                                <thead><tr><th scope="col">Mês</th><th scope="col" class="text-end">Presenças</th><th scope="col" class="text-end">Faltas</th><th scope="col" class="text-end">Sem registro</th></tr></thead>
+                                <tbody>
+                                    {% for mes in a.rotulos %}
+                                    <tr><th scope="row" class="fw-normal">{{ mes }}</th><td class="text-end">{{ a.presencas[loop.index0] }}</td><td class="text-end">{{ a.faltas[loop.index0] }}</td><td class="text-end">{{ a.sem_registro[loop.index0] }}</td></tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </details>
+                    </figcaption>
+                </figure>
                 {% else %}
                 <p class="text-muted text-center py-4 mb-0">Nenhuma aula registrada nos últimos 6 meses.</p>
                 {% endif %}
@@ -102,13 +133,13 @@
     </div>
     <div class="col-lg-5">
         <div class="card shadow-sm border-0 h-100">
-            <div class="card-header bg-white"><h5 class="mb-0"><i class="fas fa-book-open me-2" style="color: {{ visual.cor }};"></i>Para estudar</h5></div>
+            <div class="card-header bg-white"><h2 class="h5 mb-0"><i class="fas fa-book-open me-2" aria-hidden="true" style="color: {{ visual.cor }};"></i>Para estudar</h2></div>
             <div class="card-body">
                 {% if p.para_estudar %}
-                <div class="text-muted small mb-2">Aula de {{ p.para_estudar.data.strftime('%d/%m/%Y') }} · {{ p.para_estudar.professora }}</div>
+                <p class="text-muted small mb-2">Aula de {{ p.para_estudar.data.strftime('%d/%m/%Y') }} · {{ p.para_estudar.professora }}</p>
                 <p class="painel-texto">{{ p.para_estudar.orientacao }}</p>
                 {% if p.para_estudar.observacao %}
-                <div class="text-muted small mb-1">Observação da professora</div>
+                <p class="text-muted small mb-1">Observação da professora</p>
                 <p class="painel-texto text-secondary mb-0">{{ p.para_estudar.observacao }}</p>
                 {% endif %}
                 {% else %}
@@ -128,6 +159,10 @@
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     const d = {{ painel.aulas_por_mes|tojson }};
+    // Quem pede menos movimento no sistema não recebe a animação de entrada
+    // (mesma regra do dashboard: o @media CSS não alcança o <canvas>).
+    const reduzirMovimento = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const semAnimacao = reduzirMovimento ? { animation: false } : {};
     new Chart(document.getElementById('aulasMesChart').getContext('2d'), {
         type: 'bar',
         data: {
@@ -139,7 +174,7 @@ document.addEventListener('DOMContentLoaded', function () {
             ]
         },
         options: {
-            responsive: true, maintainAspectRatio: false,
+            responsive: true, maintainAspectRatio: false, ...semAnimacao,
             plugins: { legend: { position: 'bottom' } },
             scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { precision: 0 } } }
         }

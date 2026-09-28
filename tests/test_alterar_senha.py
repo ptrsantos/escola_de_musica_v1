@@ -50,7 +50,7 @@ def test_senha_errada_e_email_inexistente_dao_a_mesma_mensagem(dados, app, clien
     ('12345', '12345', 'pelo menos 6 caracteres'),
     ('nova-senha', 'outra-senha', 'A confirmação não confere'),
     (SENHA, SENHA, 'diferente da atual'),
-    ('', '', 'Preencha todos os campos'),
+    ('', '', 'Informe a nova senha'),
 ])
 def test_nova_senha_invalida_nao_troca(dados, app, client, nova, confirmacao, mensagem):
     r = trocar(client, nova=nova, confirmacao=confirmacao)

@@ -436,35 +436,45 @@ def register_routes(app):
         """Troca de senha a partir da tela de login. Sem envio de e-mail no
         sistema, quem troca prova que é o dono da conta com a senha atual; quem
         a esqueceu pede à gestora (tela Usuários). A mensagem de erro é a mesma
-        para e-mail inexistente e senha errada, para não revelar quem tem conta."""
+        para e-mail inexistente e senha errada, para não revelar quem tem conta.
+        Os erros vão para o campo a corrigir (padrão de acessibilidade das
+        outras telas), não para uma mensagem solta no topo."""
         email = (request.form.get('email') or
                  (current_user.email if current_user.is_authenticated else '')).strip().lower()
         if request.method == 'POST':
             atual = request.form.get('senha_atual') or ''
             nova = request.form.get('nova_senha') or ''
             confirmacao = request.form.get('confirmar_senha') or ''
-            usuario = Usuario.query.filter_by(email=email).first() if email else None
-            erro = None
-            if not (email and atual and nova and confirmacao):
-                erro = 'Preencha todos os campos.'
-            elif not usuario or not usuario.verificar_senha(atual):
-                erro = 'E-mail ou senha atual inválidos.'
+            erros = {}          # na ordem dos campos: é a ordem do resumo de erros
+            usuario = None
+            if not email:
+                erros['email'] = 'Informe o seu e-mail.'
+            if not atual:
+                erros['senha_atual'] = 'Informe a senha atual.'
+            elif email:
+                usuario = Usuario.query.filter_by(email=email).first()
+                if not usuario or not usuario.verificar_senha(atual):
+                    # Fica na senha, e não no e-mail, nos dois casos.
+                    erros['senha_atual'] = 'E-mail ou senha atual inválidos.'
+            if not nova:
+                erros['nova_senha'] = 'Informe a nova senha.'
             elif len(nova) < 6:
-                erro = 'A nova senha precisa ter pelo menos 6 caracteres.'
-            elif nova != confirmacao:
-                erro = 'A confirmação não confere com a nova senha.'
+                erros['nova_senha'] = 'A nova senha precisa ter pelo menos 6 caracteres.'
             elif nova == atual:
-                erro = 'A nova senha precisa ser diferente da atual.'
-            if erro:
-                flash(erro, 'danger')
-                return render_template('alterar_senha.html', email=email)
+                erros['nova_senha'] = 'A nova senha precisa ser diferente da atual.'
+            if not confirmacao:
+                erros['confirmar_senha'] = 'Repita a nova senha.'
+            elif nova and confirmacao != nova:
+                erros['confirmar_senha'] = 'A confirmação não confere com a nova senha.'
+            if erros:
+                return render_template('alterar_senha.html', email=email, erros=erros)
             usuario.set_senha(nova)
             db.session.commit()
             flash('Senha alterada. Entre com a nova senha.', 'success')
             if current_user.is_authenticated and current_user.id == usuario.id:
                 logout_user()
             return redirect(url_for('login'))
-        return render_template('alterar_senha.html', email=email)
+        return render_template('alterar_senha.html', email=email, erros={})
 
     @app.route('/logout')
     @login_required
