@@ -848,16 +848,19 @@ def _hrefs_dashboard(arvore):
     return [a for a in itens if a['href'].rstrip('/') == '/dashboard']
 
 
-def test_aluno_nao_ve_dashboard_no_menu(dados, client):
-    """Requisito 1: para o aluno, 'Dashboard' e 'Minha Área' abrem a mesma tela,
-    então 'Dashboard' não deve aparecer na navegação."""
+def test_aluno_ve_as_tres_areas_no_menu(dados, client):
+    """Requisito 1, revisto em 28/09/2026: a área do aluno foi separada em três
+    telas a pedido do professor — Dashboard (pagamentos), Minha Área (dados
+    pessoais) e Observações pedagógicas —, então as três aparecem no menu e a
+    atual fica marcada. (Antes o Dashboard do aluno repetia a Minha Área e
+    ficava fora do menu.)"""
     logar_aluno(client)
     arvore = sopa(client, '/minha-area')
-    assert not _hrefs_dashboard(arvore), \
-        'o menu do aluno não deve conter link para /dashboard'
-    # "Minha Área" continua presente e marcada como página atual.
+    assert _hrefs_dashboard(arvore), 'o aluno precisa ver o item "Dashboard"'
+    for destino in ('/minha-area', '/observacoes'):
+        itens = [a for a in arvore.select('nav a[href]') if a['href'].rstrip('/') == destino]
+        assert itens, f'o aluno precisa ver o item {destino}'
     minha = [a for a in arvore.select('nav a[href]') if a['href'].rstrip('/') == '/minha-area']
-    assert minha, 'o aluno precisa ver o item "Minha Área"'
     assert any(a.get('aria-current') == 'page' for a in minha), \
         '"Minha Área" deve estar com aria-current="page" na própria página'
 
@@ -965,17 +968,22 @@ def test_foco_vai_para_o_resumo_de_erros_ao_reexibir(dados, client):
 
 
 # ---------------------------------------------------------------------------
-# Painel do aluno e troca de senha — telas de 24/09, postas no padrão acima
-# em 28/09. /alterar-senha também entrou em PAGINAS_ANONIMAS.
+# Área do aluno e troca de senha — telas nossas, no padrão acima desde 28/09.
+# A área do aluno tem três telas (pedido do professor, 28/09): Dashboard
+# (pagamentos), Minha Área (dados pessoais) e Observações pedagógicas.
+# /alterar-senha também entrou em PAGINAS_ANONIMAS.
 # ---------------------------------------------------------------------------
-def test_painel_do_aluno_segue_o_padrao(dados, client):
+PAGINAS_ALUNO = ['/dashboard', '/minha-area', '/observacoes']
+
+
+@pytest.mark.parametrize('rota', PAGINAS_ALUNO)
+def test_area_do_aluno_segue_o_padrao(dados, client, rota):
     logar_aluno(client)
-    rota = '/dashboard (aluno)'
-    arvore = sopa(client, '/dashboard')
+    arvore = sopa(client, rota)
     verificar_landmarks(arvore, rota)
     verificar_nomes_de_controles(arvore, rota)
     verificar_tabelas(arvore, rota)
-    verificar_html_sem_aspas_escapadas(client, '/dashboard')
+    verificar_html_sem_aspas_escapadas(client, rota)
 
     niveis = [int(t.name[1]) for t in arvore.select('h1, h2, h3, h4, h5, h6')]
     assert niveis[0] == 1, f'{rota}: primeiro título é h{niveis[0]}, não h1'
@@ -986,34 +994,47 @@ def test_painel_do_aluno_segue_o_padrao(dados, client):
                 if i.get('aria-hidden') != 'true']
     assert not expostos, f'{rota}: ícone(s) decorativo(s) sem aria-hidden: {expostos}'
     assert not arvore.select('.text-warning'), f'{rota}: texto usando .text-warning'
+    sem_acesso = [d for d in arvore.select('.table-responsive') if d.get('tabindex') != '0']
+    assert not sem_acesso, f'{rota}: .table-responsive sem tabindex="0"'
 
 
-def test_grafico_do_painel_do_aluno_tem_alternativa_textual(dados, client):
+def verificar_grafico(resposta, id_grafico, linhas_esperadas):
+    """role="img" + aria-label, descrição na mesma <figure> e tabela equivalente
+    em <details>; devolve (descrição, linhas da tabela)."""
+    html = resposta.get_data(as_text=True)
+    arvore = BeautifulSoup(html, 'html.parser')
+    grafico = arvore.find(id=id_grafico)
+    assert grafico is not None, f'{id_grafico} não renderizado'
+    assert grafico.get('role') == 'img' and len(grafico.get('aria-label') or '') > 30
+    figura = grafico.find_parent('figure')
+    assert figura is not None, f'{id_grafico}: canvas fora de <figure>'
+    descricao = arvore.find(id=grafico.get('aria-describedby'))
+    assert descricao is not None and descricao.find_parent('figure') is figura
+    assert figura.select_one('figcaption details summary').get_text(strip=True)
+    tabela = figura.select_one('figcaption details table')
+    assert tabela is not None, f'{id_grafico}: sem tabela equivalente em <details>'
+    linhas = tabela.select('tbody tr')
+    assert len(linhas) == linhas_esperadas, f'{id_grafico}: a tabela não tem os meses do gráfico'
+    assert '...semAnimacao' in html, 'o gráfico precisa respeitar prefers-reduced-motion'
+    return descricao.get_text(), [[td.get_text(strip=True) for td in tr.find_all('td')] for tr in linhas]
+
+
+def test_grafico_de_aulas_do_aluno_tem_alternativa_textual(dados, client):
     """Conjunto ``dados``: a Ana tem uma aula há 5 dias, sem marcador de
     presença — nos 6 meses, 0 presenças, 0 faltas e 1 aula sem registro."""
     logar_aluno(client)
-    resposta = client.get('/dashboard')
-    arvore = BeautifulSoup(resposta.get_data(as_text=True), 'html.parser')
-    grafico = arvore.find(id='aulasMesChart')
-    assert grafico is not None, 'gráfico de aulas por mês não renderizado'
-    assert grafico.get('role') == 'img' and len(grafico.get('aria-label') or '') > 30
+    descricao, linhas = verificar_grafico(client.get('/observacoes'), 'aulasMesChart', 6)
+    assert 'Total: 1 aula sem presença registrada.' in descricao
+    assert [sum(int(v) for v in c) for c in zip(*linhas)] == [0, 0, 1]
 
-    figura = grafico.find_parent('figure')
-    assert figura is not None, 'canvas fora de <figure>'
-    descricao = arvore.find(id=grafico.get('aria-describedby'))
-    assert descricao is not None and descricao.find_parent('figure') is figura
-    assert 'Total: 1 aula sem presença registrada.' in descricao.get_text()
 
-    tabela = figura.select_one('figcaption details table')
-    assert tabela is not None, 'sem tabela equivalente em <details>'
-    assert figura.select_one('figcaption details summary').get_text(strip=True)
-    linhas = tabela.select('tbody tr')
-    assert len(linhas) == 6, 'a tabela deveria ter os 6 meses do gráfico'
-    colunas = list(zip(*[[int(td.get_text()) for td in tr.find_all('td')] for tr in linhas]))
-    assert [sum(c) for c in colunas] == [0, 0, 1]      # presenças, faltas, sem registro
-
-    assert '...semAnimacao' in resposta.get_data(as_text=True), \
-        'o gráfico precisa respeitar prefers-reduced-motion'
+def test_grafico_de_mensalidades_do_aluno_tem_alternativa_textual(dados, client):
+    """Conjunto ``dados``: a Ana pagou 4 x R$ 250 nos últimos meses e tem 1
+    pendente que vence em 20 dias, com a competência do mês corrente."""
+    logar_aluno(client)
+    descricao, linhas = verificar_grafico(client.get('/dashboard'), 'mensalidadesChart', 12)
+    assert 'Total: R$ 1.000,00 pago, R$ 250,00 a vencer.' in descricao
+    assert linhas[-1] == ['R$ 0,00', 'R$ 0,00', 'R$ 250,00']       # pago, em atraso, a vencer
 
 
 def test_erro_da_troca_de_senha_fica_associado_ao_campo(dados, client):

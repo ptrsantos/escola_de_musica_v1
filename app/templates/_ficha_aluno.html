@@ -1,0 +1,57 @@
+{#
+  Campos da ficha de aluno dentro do cadastro de usuário (pedido da direção,
+  28/09/2026): para o perfil Aluno / Aluna, o login e a ficha nascem juntos —
+  sem isso o aluno entrava e via "cadastro ainda não vinculado".
+
+  Usado na tela "Cadastrar usuário" (prefixo '') e no modal "Novo usuário"
+  (prefixo 'novo-u-'). O grupo só vale para o perfil aluno: o script esconde e
+  desabilita o <fieldset> para os outros perfis (campo desabilitado não vai no
+  POST) e o servidor só valida a ficha quando o perfil é aluno. Por isso o
+  instrumento não leva o atributo required: sem JavaScript, ele bloquearia o
+  cadastro de uma professora.
+#}
+{% from '_a11y.html' import campo, selecao %}
+
+{% macro campos_da_ficha(instrumentos, valores, erros, prefixo='', visivel=true) %}
+  {%- set opcoes = [('', 'Selecione o instrumento')] -%}
+  {%- for i in instrumentos %}{% set _ = opcoes.append((i.id, i.nome)) %}{% endfor -%}
+  <fieldset id="{{ prefixo }}ficha-aluno" class="border rounded px-3 pt-2 mb-3"{% if not visivel %} hidden disabled{% endif %}>
+    <legend class="fs-6 fw-semibold float-none w-auto px-1 mb-1">Ficha do aluno</legend>
+    <p class="form-text mt-0">Se já existir uma ficha de aluno com este e-mail (tela Alunos), ela é
+      vinculada ao login e estes campos são ignorados.</p>
+    {{ selecao('instrumento_id', 'Instrumento', opcoes,
+               selecionado=valores.get('instrumento_id'), erro=erros.get('instrumento_id'),
+               ajuda='Obrigatório para o perfil Aluno / Aluna.',
+               id=prefixo ~ 'instrumento_id') }}
+    <div class="row">
+      {{ campo('data_nascimento', 'Data de nascimento', tipo='date',
+               valor=valores.get('data_nascimento', ''), erro=erros.get('data_nascimento'),
+               ajuda='Aparece no quadro de aniversariantes.',
+               classe_wrapper='col-sm-6 mb-3', id=prefixo ~ 'data_nascimento') }}
+      {{ campo('mensalidade_base', 'Mensalidade (R$)', tipo='number',
+               valor=valores.get('mensalidade_base', '0'), erro=erros.get('mensalidade_base'),
+               step='0.01', min='0', classe_wrapper='col-sm-6 mb-3',
+               id=prefixo ~ 'mensalidade_base') }}
+    </div>
+    {{ campo('endereco', 'Endereço', autocomplete='street-address',
+             valor=valores.get('endereco', ''), erro=erros.get('endereco'),
+             id=prefixo ~ 'endereco') }}
+  </fieldset>
+{% endmacro %}
+
+{% macro script_da_ficha(id_perfil, id_ficha) %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const perfil = document.getElementById('{{ id_perfil }}');
+    const ficha = document.getElementById('{{ id_ficha }}');
+    if (!perfil || !ficha) return;
+    const ajustar = function () {
+        const aluno = perfil.value === 'aluno';
+        ficha.hidden = !aluno;
+        ficha.disabled = !aluno;
+    };
+    perfil.addEventListener('change', ajustar);
+    ajustar();
+});
+</script>
+{% endmacro %}

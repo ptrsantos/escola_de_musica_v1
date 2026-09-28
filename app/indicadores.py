@@ -12,8 +12,8 @@ seria o caminho definitivo, mas exige alinhar estrutura com o grupo e o Neon.)
 Desempenho: tudo sai de **uma** consulta sobre ``aula`` (com o aluno e o
 instrumento no JOIN) e é agregado em memória — ~1,4 mil linhas, alguns ms.
 
-O painel do aluno (``painel_do_aluno``) usa as mesmas regras, só com as aulas
-e as mensalidades dele.
+A área do aluno (``pedagogico_do_aluno`` e ``financeiro_do_aluno``) usa as
+mesmas regras, só com as aulas e as mensalidades dele.
 """
 import re
 from collections import defaultdict
@@ -22,7 +22,8 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 
 from app import db
-from app.models import DIAS_SEMANA, Aluno, Aula, Instrumento, Mensalidade, ultimos_meses
+from app.models import (DIAS_SEMANA, Aluno, Aula, Instrumento, Mensalidade,
+                        format_currency, ultimos_meses)
 from app.risco import RE_PRESENCA
 
 MESES_ABREV = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
@@ -249,53 +250,75 @@ def _resumo_aula(aula):
             'orientacao': (aula.orientacao_estudo or '').strip()}
 
 
-def painel_do_aluno(aluno, agora=None, meses=6):
-    """Tudo o que o painel do aluno mostra, em duas consultas (as aulas dele e a
-    próxima mensalidade pendente):
+# ---------------------------------------------------------------------------
+# Área do aluno — separada em três telas a pedido do professor (28/09/2026):
+# Dashboard (pagamentos e inadimplência), Minha Área (dados pessoais) e
+# Observações pedagógicas (as aulas do mês). O risco de evasão fica de fora de
+# propósito: é ferramenta da escola, não informação para o aluno.
+# ---------------------------------------------------------------------------
+MESES_NOME = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho',
+              'agosto', 'setembro', 'outubro', 'novembro', 'dezembro']
+RE_MES = re.compile(r'^\d{4}-(0[1-9]|1[0-2])$')
 
-    - ``presenca``: ``resumo_presenca`` das aulas do ano corrente;
-    - ``proxima_aula``: data pela regra de ``proxima_aula()``;
-    - ``ultima_aula`` e ``para_estudar`` (a aula mais recente que tem
-      orientação de estudo), com a observação já sem o marcador de presença;
-    - ``professora``: quem deu a aula mais recente — é o vínculo que o modelo
-      tem hoje (não há ``Aluno.professora_id``);
+
+def _rotulo_mes(ref):
+    """'2026-09' -> 'set/26' (eixo dos gráficos)."""
+    return f"{MESES_ABREV[int(ref[5:]) - 1]}/{ref[2:4]}"
+
+
+def _mes_vizinho(ref, passo):
+    ano, mes = divmod(int(ref[:4]) * 12 + int(ref[5:]) - 1 + passo, 12)
+    return f'{ano:04d}-{mes + 1:02d}'
+
+
+def pedagogico_do_aluno(aluno, mes=None, agora=None, meses=6):
+    """Observações pedagógicas do aluno, em uma consulta (as aulas dele):
+
+    - ``aulas_do_mes``: as aulas de ``mes`` ('AAAA-MM'; o vigente se vier vazio,
+      inválido ou no futuro), da mais recente para a mais antiga, com presença,
+      observação sem o marcador e o que estudar; ``mes_anterior`` e
+      ``mes_seguinte`` (``None`` quando o mês é o vigente) para navegar;
+    - ``presenca_mes`` e ``presenca`` (ano corrente): ``resumo_presenca``;
+    - ``proxima_aula``, ``ultima_aula``, ``para_estudar`` (a orientação mais
+      recente) e ``professora`` (quem deu a última aula — o vínculo que o
+      modelo tem hoje);
     - ``aulas_por_mes``: presenças, faltas e aulas sem marcação nos últimos
-      ``meses`` meses, para o gráfico;
-    - ``mensalidades``: em atraso (quantidade e valor, das colunas calculadas
-      do aluno) e a próxima mensalidade pendente.
-
-    O risco de evasão fica de fora de propósito: é ferramenta da escola, não
-    informação para o aluno.
+      ``meses`` meses, para o gráfico, com a descrição para leitor de tela.
     """
     agora = agora or datetime.now()
     hoje = agora.date()
+    atual = hoje.strftime('%Y-%m')
+    if not (mes and RE_MES.match(mes) and mes <= atual):
+        mes = atual
     aulas = db.session.scalars(select(Aula).where(Aula.aluno_id == aluno.id)
                                .order_by(Aula.data.desc(), Aula.id.desc())).all()
+    do_mes = [a for a in aulas if a.data.strftime('%Y-%m') == mes]
 
     refs = ultimos_meses(meses, hoje)
     por_mes = {ref: [0, 0, 0] for ref in refs}          # presenças, faltas, sem registro
     for aula in aulas:
-        mes = por_mes.get(aula.data.strftime('%Y-%m'))
-        if mes is None:
+        contagem = por_mes.get(aula.data.strftime('%Y-%m'))
+        if contagem is None:
             continue
         p, f = contar_presenca(aula.observacao)
         if p + f:
-            mes[0] += p
-            mes[1] += f
+            contagem[0] += p
+            contagem[1] += f
         else:
-            mes[2] += 1
+            contagem[2] += 1
+    presencas, faltas, sem_registro = ([por_mes[ref][i] for ref in refs] for i in range(3))
 
     ultima = aulas[0] if aulas else None
     com_orientacao = next((a for a in aulas if (a.orientacao_estudo or '').strip()), None)
     data_proxima = proxima_aula(aluno.dia_aula_semana, aluno.hora_aula, agora)
-    proxima_mensalidade = db.session.scalars(
-        select(Mensalidade)
-        .where(Mensalidade.aluno_id == aluno.id, Mensalidade.status == 'pendente')
-        .order_by(Mensalidade.vencimento).limit(1)).first()
-    presencas, faltas, sem_registro = ([por_mes[ref][i] for ref in refs] for i in range(3))
-
     return {
         'ano': hoje.year,
+        'mes': mes,
+        'mes_rotulo': f'{MESES_NOME[int(mes[5:]) - 1]} de {mes[:4]}',
+        'mes_anterior': _mes_vizinho(mes, -1),
+        'mes_seguinte': _mes_vizinho(mes, 1) if mes < atual else None,
+        'aulas_do_mes': [_resumo_aula(a) for a in do_mes],
+        'presenca_mes': resumo_presenca(do_mes),
         'presenca': resumo_presenca(a for a in aulas if a.data.year == hoje.year),
         'proxima_aula': data_proxima,
         'proxima_aula_rotulo': rotulo_dia(data_proxima, hoje) if data_proxima else None,
@@ -303,16 +326,88 @@ def painel_do_aluno(aluno, agora=None, meses=6):
         'para_estudar': _resumo_aula(com_orientacao),
         'professora': ultima.professora if ultima else None,
         'aulas_por_mes': {
-            'rotulos': [f"{MESES_ABREV[int(ref[5:]) - 1]}/{ref[2:4]}" for ref in refs],
+            'rotulos': [_rotulo_mes(ref) for ref in refs],
             'presencas': presencas,
             'faltas': faltas,
             'sem_registro': sem_registro,
             'total': sum(sum(v) for v in por_mes.values()),
             'descricao': descrever_aulas_por_mes(refs, presencas, faltas, sem_registro),
         },
-        'mensalidades': {
-            'em_atraso': aluno.qtd_em_atraso or 0,
-            'valor_em_aberto': aluno.valor_em_aberto or 0.0,
-            'proxima': proxima_mensalidade,
+    }
+
+
+def _descrever_competencia(pago, atraso, a_vencer):
+    partes = [texto for v, texto in ((pago, f'{format_currency(pago)} pago'),
+                                     (atraso, f'{format_currency(atraso)} em atraso'),
+                                     (a_vencer, f'{format_currency(a_vencer)} a vencer')) if v]
+    return ', '.join(partes) if partes else 'sem mensalidade'
+
+
+def financeiro_do_aluno(aluno, ano=None, agora=None, meses=12):
+    """Pagamentos e inadimplência do aluno, em uma consulta (as mensalidades
+    dele; ``valor_pago`` é coluna calculada):
+
+    - ``em_atraso``: as mensalidades em atraso (de qualquer ano), com o que
+      falta pagar, e ``valor_em_aberto``, a soma;
+    - ``proxima``: a próxima mensalidade pendente;
+    - ``pago_no_ano``/``quitadas_no_ano``/``do_ano``: o ano corrente, pelo
+      vencimento;
+    - ``anos`` e ``lista``: os anos com mensalidade e as mensalidades de ``ano``
+      (o corrente, ou o mais recente que houver, por padrão);
+    - ``por_mes``: pago, em atraso e a vencer por competência nos últimos
+      ``meses`` meses, para o gráfico, com a descrição para leitor de tela.
+    Dinheiro comparado e somado em centavos (defeito nº 4: float).
+    """
+    hoje = (agora or datetime.now()).date()
+    mensalidades = db.session.scalars(
+        select(Mensalidade).where(Mensalidade.aluno_id == aluno.id)
+        .order_by(Mensalidade.vencimento.desc(), Mensalidade.id.desc())).all()
+
+    def falta(m):
+        return max(round(m.valor - (m.valor_pago or 0), 2), 0.0)
+
+    em_atraso = [m for m in mensalidades if m.status == 'em atraso']
+    pendentes = [m for m in mensalidades if m.status == 'pendente']
+    do_ano = [m for m in mensalidades if m.vencimento.year == hoje.year]
+
+    anos = sorted({m.vencimento.year for m in mensalidades}, reverse=True)
+    if ano not in anos:
+        ano = hoje.year if hoje.year in anos else (anos[0] if anos else hoje.year)
+
+    refs = ultimos_meses(meses, hoje)
+    por_mes = {ref: [0.0, 0.0, 0.0] for ref in refs}     # pago, em atraso, a vencer
+    for m in mensalidades:
+        valores = por_mes.get(m.competencia)
+        if valores is None:
+            continue
+        valores[0] += m.valor_pago or 0
+        if m.status == 'em atraso':
+            valores[1] += falta(m)
+        elif m.status == 'pendente':
+            valores[2] += falta(m)
+    pago, atraso, a_vencer = ([round(por_mes[ref][i], 2) for ref in refs] for i in range(3))
+    descricao = (f'Mensalidades dos últimos {len(refs)} meses, por competência. '
+                 + '; '.join(f'{ref[5:]}/{ref[:4]}: {_descrever_competencia(p, a, v)}'
+                             for ref, p, a, v in zip(refs, pago, atraso, a_vencer))
+                 + f'. Total: {_descrever_competencia(sum(pago), sum(atraso), sum(a_vencer))}.')
+
+    return {
+        'ano_corrente': hoje.year,
+        'em_atraso': [{'mensalidade': m, 'falta': falta(m)} for m in em_atraso],
+        'valor_em_aberto': round(sum(falta(m) for m in em_atraso), 2),
+        'proxima': min(pendentes, key=lambda m: m.vencimento) if pendentes else None,
+        'pago_no_ano': round(sum(m.valor_pago or 0 for m in do_ano), 2),
+        'quitadas_no_ano': sum(1 for m in do_ano if m.status == 'pago'),
+        'do_ano': len(do_ano),
+        'anos': anos,
+        'ano': ano,
+        'lista': [m for m in mensalidades if m.vencimento.year == ano],
+        'por_mes': {
+            'rotulos': [_rotulo_mes(ref) for ref in refs],
+            'pago': pago,
+            'atraso': atraso,
+            'a_vencer': a_vencer,
+            'total': round(sum(pago) + sum(atraso) + sum(a_vencer), 2),
+            'descricao': descricao,
         },
     }

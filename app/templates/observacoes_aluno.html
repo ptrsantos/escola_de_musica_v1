@@ -1,0 +1,178 @@
+{% extends 'base.html' %}
+
+{% block title %}Observações pedagógicas{% endblock %}
+
+{% block style %}
+<style>
+    .painel-metrica .rotulo { font-size: 0.85rem; font-weight: 400; color: #6c757d; margin-bottom: 0.25rem; }
+    .painel-metrica .valor { font-size: 1.6rem; font-weight: 600; line-height: 1.2; }
+    .painel-metrica .detalhe { font-size: 0.8rem; color: #6c757d; }
+    .painel-texto { white-space: pre-line; }
+    /* .text-warning (#ffc107) tem 1,63:1 sobre branco e não serve para texto;
+       este tom dá 5,54:1 (o mesmo do dashboard). */
+    .texto-atencao { color: #8a6100; }
+</style>
+{% endblock %}
+
+{% block content %}
+{# Observações pedagógicas do aluno (pedido do professor, 28/09/2026): o que a
+   professora anotou nas aulas do mês vigente, com o histórico dos meses
+   anteriores pela navegação. Acessibilidade no padrão de docs/acessibilidade.md. #}
+{% set visual = aluno.instrumento.nome|visual_instrumento %}
+{% set p = ped %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+    <div>
+        <h1 class="h2 mb-0">Observações pedagógicas</h1>
+        <p class="text-muted mb-0"><span aria-hidden="true">{{ visual.emoji }}</span> {{ aluno.instrumento.nome }}{% if p.professora %} · professora {{ p.professora }}{% endif %}</p>
+    </div>
+    <nav aria-label="Escolher o mês">
+        <ul class="pagination mb-0">
+            <li class="page-item"><a class="page-link" href="{{ url_for('observacoes', mes=p.mes_anterior) }}" onclick="mostrarSpinner()"><span aria-hidden="true">‹ </span>Mês anterior</a></li>
+            <li class="page-item active"><span class="page-link" aria-current="page">{{ p.mes_rotulo|capitalize }}</span></li>
+            {% if p.mes_seguinte %}
+            <li class="page-item"><a class="page-link" href="{{ url_for('observacoes', mes=p.mes_seguinte) }}" onclick="mostrarSpinner()">Mês seguinte<span aria-hidden="true"> ›</span></a></li>
+            {% endif %}
+        </ul>
+    </nav>
+</div>
+
+<div class="row g-3 mb-4">
+    {% for titulo, presenca, vazio in [('Presença em ' ~ p.mes_rotulo, p.presenca_mes, 'nenhuma presença registrada no mês'),
+                                       ('Presença em ' ~ p.ano, p.presenca, 'nenhuma presença registrada no ano')] %}
+    <div class="col-6 col-lg-3">
+        <div class="card shadow-sm border-0 h-100 painel-metrica"><div class="card-body">
+            <h2 class="rotulo"><i class="fas fa-user-check me-1" aria-hidden="true"></i>{{ titulo }}</h2>
+            {% if presenca.taxa is not none %}
+            {% set taxa = presenca.taxa %}
+            <p class="h2 valor mb-0 {{ 'text-success' if taxa >= 0.75 else ('texto-atencao' if taxa >= 0.5 else 'text-danger') }}">{{ '%.0f'|format(taxa * 100) }}%</p>
+            <p class="detalhe mb-0">{{ presenca.presencas }} presença{{ 's' if presenca.presencas != 1 }} · {{ presenca.faltas }} falta{{ 's' if presenca.faltas != 1 }}</p>
+            {% else %}
+            <p class="h2 valor mb-0 text-muted">—</p>
+            <p class="detalhe mb-0">{{ vazio }}</p>
+            {% endif %}
+        </div></div>
+    </div>
+    {% endfor %}
+    <div class="col-6 col-lg-3">
+        <div class="card shadow-sm border-0 h-100 painel-metrica"><div class="card-body">
+            <h2 class="rotulo"><i class="fas fa-calendar-day me-1" aria-hidden="true"></i>Próxima aula</h2>
+            {% if p.proxima_aula %}
+            <p class="h2 valor mb-0">{{ p.proxima_aula_rotulo }}</p>
+            <p class="detalhe mb-0">{{ 'às ' ~ aluno.hora_aula.strftime('%H:%M') if aluno.hora_aula else 'horário a combinar' }}</p>
+            {% else %}
+            <p class="h2 valor mb-0 text-muted">—</p>
+            <p class="detalhe mb-0">sem horário fixo cadastrado</p>
+            {% endif %}
+        </div></div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="card shadow-sm border-0 h-100 painel-metrica"><div class="card-body">
+            <h2 class="rotulo"><i class="fas fa-music me-1" aria-hidden="true"></i>Última aula</h2>
+            {% if p.ultima_aula %}
+            <p class="h2 valor mb-0">{{ p.ultima_aula.data.strftime('%d/%m') }}</p>
+            <p class="detalhe mb-0">{{ p.ultima_aula.presenca }}</p>
+            {% else %}
+            <p class="h2 valor mb-0 text-muted">—</p>
+            <p class="detalhe mb-0">nenhuma aula registrada</p>
+            {% endif %}
+        </div></div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-lg-7">
+        <h2 class="h4 mb-3">Aulas de {{ p.mes_rotulo }}</h2>
+        {% for aula in p.aulas_do_mes %}
+        <article class="card shadow-sm border-0 mb-3">
+            <div class="card-body">
+                <h3 class="h6 mb-1">{{ aula.data.strftime('%d/%m/%Y') }} <span class="fw-normal text-muted">· {{ aula.professora }} · {{ aula.presenca }}</span></h3>
+                <p class="text-muted small mb-1">Observação da professora</p>
+                <p class="painel-texto">{{ aula.observacao or 'Sem observações.' }}</p>
+                <p class="text-muted small mb-1">Para estudar</p>
+                <p class="painel-texto mb-0">{{ aula.orientacao or 'Sem orientação.' }}</p>
+            </div>
+        </article>
+        {% else %}
+        <div class="card shadow-sm border-0"><div class="card-body text-muted text-center py-4">
+            Nenhuma aula registrada em {{ p.mes_rotulo }}.
+            <a href="{{ url_for('observacoes', mes=p.mes_anterior) }}" onclick="mostrarSpinner()">Ver o mês anterior</a>.
+        </div></div>
+        {% endfor %}
+    </div>
+    <div class="col-lg-5">
+        <div class="card shadow-sm border-0 mb-3">
+            <div class="card-header bg-white"><h2 class="h5 mb-0"><i class="fas fa-book-open me-2" aria-hidden="true" style="color: {{ visual.cor }};"></i>Para estudar agora</h2></div>
+            <div class="card-body">
+                {% if p.para_estudar %}
+                <p class="text-muted small mb-2">Aula de {{ p.para_estudar.data.strftime('%d/%m/%Y') }} · {{ p.para_estudar.professora }}</p>
+                <p class="painel-texto mb-0">{{ p.para_estudar.orientacao }}</p>
+                {% else %}
+                <p class="text-muted mb-0">Sua professora ainda não registrou orientações de estudo.</p>
+                {% endif %}
+            </div>
+        </div>
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-white"><h2 class="h5 mb-0">Aulas por mês</h2></div>
+            <div class="card-body">
+                {% set a = p.aulas_por_mes %}
+                {% if a.total %}
+                <figure class="mb-0">
+                    <div style="position: relative; height: 240px;">
+                        <canvas id="aulasMesChart" role="img"
+                                aria-label="Gráfico de barras empilhadas com as presenças, as faltas e as aulas sem presença registrada em cada um dos últimos {{ a.rotulos|length }} meses. Os números estão na tabela abaixo."
+                                aria-describedby="desc-aulas-mes"></canvas>
+                    </div>
+                    <figcaption class="mt-2">
+                        <p class="visually-hidden" id="desc-aulas-mes">{{ a.descricao }}</p>
+                        <details>
+                            <summary>Ver dados em tabela</summary>
+                            <table class="table table-sm mt-2 mb-0">
+                                <caption class="visually-hidden">Presenças, faltas e aulas sem presença registrada por mês, nos últimos {{ a.rotulos|length }} meses</caption>
+                                <thead><tr><th scope="col">Mês</th><th scope="col" class="text-end">Presenças</th><th scope="col" class="text-end">Faltas</th><th scope="col" class="text-end">Sem registro</th></tr></thead>
+                                <tbody>
+                                    {% for mes in a.rotulos %}
+                                    <tr><th scope="row" class="fw-normal">{{ mes }}</th><td class="text-end">{{ a.presencas[loop.index0] }}</td><td class="text-end">{{ a.faltas[loop.index0] }}</td><td class="text-end">{{ a.sem_registro[loop.index0] }}</td></tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </details>
+                    </figcaption>
+                </figure>
+                {% else %}
+                <p class="text-muted text-center py-4 mb-0">Nenhuma aula registrada nos últimos 6 meses.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if ped.aulas_por_mes.total %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const d = {{ ped.aulas_por_mes|tojson }};
+    // Quem pede menos movimento no sistema não recebe a animação de entrada
+    // (mesma regra do dashboard: o @media CSS não alcança o <canvas>).
+    const reduzirMovimento = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const semAnimacao = reduzirMovimento ? { animation: false } : {};
+    new Chart(document.getElementById('aulasMesChart').getContext('2d'), {
+        type: 'bar',
+        data: {
+            labels: d.rotulos,
+            datasets: [
+                { label: 'Presenças', data: d.presencas, backgroundColor: 'rgba(25, 135, 84, 0.75)' },
+                { label: 'Faltas', data: d.faltas, backgroundColor: 'rgba(220, 53, 69, 0.7)' },
+                { label: 'Aula sem presença registrada', data: d.sem_registro, backgroundColor: 'rgba(173, 181, 189, 0.6)' }
+            ]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false, ...semAnimacao,
+            plugins: { legend: { position: 'bottom' } },
+            scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { precision: 0 } } }
+        }
+    });
+});
+</script>
+{% endif %}
+{% endblock %}
