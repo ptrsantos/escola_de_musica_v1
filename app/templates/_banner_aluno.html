@@ -1,0 +1,20 @@
+{#
+  Banner com a foto do instrumento no topo do Dashboard e das Observações do aluno (13/10/2026,
+  pedido de uma usuária: "foto ou imagem maior do instrumento, ocupando o espaço
+  todo"). Traz o <h1> da página. A foto é decorativa (alt vazio): o nome do
+  instrumento está escrito ao lado. Estilo em base.html (.banner-aluno); fotos
+  e créditos em static/instrumentos/ (CREDITOS.md).
+#}
+{% macro banner_do_aluno(aluno, titulo, subtitulo=none) %}
+  {%- set visual = aluno.instrumento.nome|visual_instrumento -%}
+  <div class="banner-aluno mb-4" style="--cor-instrumento: {{ visual.cor }};">
+    <img class="banner-aluno-foto" src="{{ url_for('static', filename=visual.foto) }}" alt=""
+         width="1600" height="400" decoding="async">
+    <div class="banner-aluno-texto">
+      <h1 class="h2 mb-1">{{ titulo }}</h1>
+      <p class="mb-0"><span aria-hidden="true">{{ visual.emoji }}</span>
+        <strong>{{ aluno.instrumento.nome }}</strong>{% if subtitulo %} · {{ subtitulo }}{% endif %}</p>
+    </div>
+    <p class="banner-aluno-credito">Foto: {{ visual.credito }} / Unsplash</p>
+  </div>
+{% endmacro %}

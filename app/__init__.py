@@ -46,27 +46,35 @@ OCUPACAO_CONFIG = {
 }
 
 # Identidade visual por instrumento na área do aluno (pedido da direção,
-# 22/09/2026: "aluno de piano = foto de piano"). Emoji em vez de foto: não
-# depende de imagem baixada nem de licença. A Flauta usa 🎶 porque o emoji de
-# flauta (🪈, Unicode 15) não aparece no Windows 10. A chave é o nome sem
-# acento e em minúsculas; instrumento cadastrado depois cai no padrão.
+# 22/09/2026: "aluno de piano = foto de piano"). Cor e emoji desde 24/09; a
+# foto (banner do Dashboard e das Observações; cartão na Minha Área) desde 13/10, a pedido de uma
+# usuária: "foto ou imagem maior do instrumento, ocupando o espaço todo".
+# Fotos do Unsplash, licença Unsplash (uso livre, sem exigir crédito; damos o
+# crédito mesmo assim) — origem de cada uma em static/instrumentos/CREDITOS.md.
+# A Flauta usa 🎶 porque o emoji de flauta (🪈, Unicode 15) não aparece no
+# Windows 10. A chave é o nome sem acento e em minúsculas; instrumento
+# cadastrado depois cai no padrão (partitura).
 INSTRUMENTO_VISUAL = {
-    'violao':   {'emoji': '🎸', 'cor': '#7A4A1E', 'fundo': '#F5EBDD'},
-    'piano':    {'emoji': '🎹', 'cor': '#212529', 'fundo': '#ECEEF1'},
-    'teclado':  {'emoji': '🎹', 'cor': '#5A32A3', 'fundo': '#EFE8FA'},
-    'canto':    {'emoji': '🎤', 'cor': '#A61E61', 'fundo': '#FBE7F1'},
-    'bateria':  {'emoji': '🥁', 'cor': '#B02A37', 'fundo': '#FBE9EB'},
-    'guitarra': {'emoji': '🎸', 'cor': '#B35300', 'fundo': '#FFF0E0'},
-    'baixo':    {'emoji': '🎸', 'cor': '#0A58CA', 'fundo': '#E7F0FE'},
-    'saxofone': {'emoji': '🎷', 'cor': '#8A6508', 'fundo': '#FBF3DC'},
-    'violino':  {'emoji': '🎻', 'cor': '#0F766E', 'fundo': '#E0F2F1'},
-    'flauta':   {'emoji': '🎶', 'cor': '#146C43', 'fundo': '#E6F4EC'},
+    'violao':   {'emoji': '🎸', 'cor': '#7A4A1E', 'fundo': '#F5EBDD', 'credito': 'Jefferson Santos'},
+    'piano':    {'emoji': '🎹', 'cor': '#212529', 'fundo': '#ECEEF1', 'credito': 'Geert Pieters'},
+    'teclado':  {'emoji': '🎹', 'cor': '#5A32A3', 'fundo': '#EFE8FA', 'credito': 'Martin Hexeberg'},
+    'canto':    {'emoji': '🎤', 'cor': '#A61E61', 'fundo': '#FBE7F1', 'credito': 'Matt Botsford'},
+    'bateria':  {'emoji': '🥁', 'cor': '#B02A37', 'fundo': '#FBE9EB', 'credito': 'Gabriel Barletta'},
+    'guitarra': {'emoji': '🎸', 'cor': '#B35300', 'fundo': '#FFF0E0', 'credito': 'Jeremy Allouche'},
+    'baixo':    {'emoji': '🎸', 'cor': '#0A58CA', 'fundo': '#E7F0FE', 'credito': 'William Veitch'},
+    'saxofone': {'emoji': '🎷', 'cor': '#8A6508', 'fundo': '#FBF3DC', 'credito': 'Manuel Luikenga'},
+    'violino':  {'emoji': '🎻', 'cor': '#0F766E', 'fundo': '#E0F2F1', 'credito': 'Natalie Kinnear'},
+    'flauta':   {'emoji': '🎶', 'cor': '#146C43', 'fundo': '#E6F4EC', 'credito': 'Ani Adigyozalyan'},
 }
-INSTRUMENTO_VISUAL_PADRAO = {'emoji': '🎵', 'cor': '#495057', 'fundo': '#F1F3F5'}
+for _chave, _visual in INSTRUMENTO_VISUAL.items():
+    _visual['foto'] = f'instrumentos/{_chave}.jpg'          # relativo a static/
+del _chave, _visual
+INSTRUMENTO_VISUAL_PADRAO = {'emoji': '🎵', 'cor': '#495057', 'fundo': '#F1F3F5',
+                             'foto': 'instrumentos/padrao.jpg', 'credito': 'Marius Masalar'}
 
 
 def visual_de_instrumento(nome):
-    """{'emoji', 'cor', 'fundo'} do instrumento, casando pelo nome sem acento
+    """{'emoji', 'cor', 'fundo', 'foto', 'credito'} do instrumento, casando pelo nome sem acento
     e sem maiúsculas ('Violão' = 'violao')."""
     chave = unicodedata.normalize('NFKD', (nome or '').strip().lower())
     chave = ''.join(c for c in chave if not unicodedata.combining(c))

@@ -28,6 +28,22 @@ def test_visual_de_instrumento():
     assert visual_de_instrumento(None) == INSTRUMENTO_VISUAL_PADRAO
 
 
+def test_cada_instrumento_tem_foto_e_credito():
+    """Banner das telas do aluno (13/10): toda foto existe em static/ e está nos
+    créditos; instrumento cadastrado depois cai na foto padrão (partitura)."""
+    import os
+    from app import INSTRUMENTO_VISUAL
+    estatico = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'app', 'static')
+    with open(os.path.join(estatico, 'instrumentos', 'CREDITOS.md'), encoding='utf-8') as f:
+        creditos = f.read()
+    for visual in [*INSTRUMENTO_VISUAL.values(), INSTRUMENTO_VISUAL_PADRAO]:
+        assert os.path.isfile(os.path.join(estatico, visual['foto'])), visual['foto']
+        assert visual['credito'] and visual['credito'] in creditos
+        assert os.path.basename(visual['foto']) in creditos
+    assert visual_de_instrumento('Violão')['foto'] == 'instrumentos/violao.jpg'
+    assert visual_de_instrumento('Ukulele')['foto'] == 'instrumentos/padrao.jpg'
+
+
 def test_proxima_aula_e_rotulo():
     hoje = AGORA.date()
     assert proxima_aula(3, time(14, 0), AGORA) == hoje                 # hoje, ainda não passou
@@ -205,6 +221,29 @@ def test_dashboard_mostra_atraso_e_exige_cadastro_vinculado(dados, app, client):
 def test_login_do_aluno_vai_para_o_dashboard(dados, client):
     r = logar_aluno(client)
     assert r.status_code == 302 and r.headers['Location'].endswith('/dashboard')
+
+
+def test_foto_do_instrumento_nas_telas_do_aluno(dados, client):
+    """Dashboard e Observações abrem com o banner largo; na Minha Área a foto
+    fica menor, no cartão do instrumento (pedido da usuária, 13/10)."""
+    from bs4 import BeautifulSoup
+    logar_aluno(client)
+    for rota, titulo in (('/dashboard', 'Olá, Ana Silva'), ('/observacoes', 'Observações pedagógicas')):
+        arvore = BeautifulSoup(texto(client.get(rota)), 'html.parser')
+        banner = arvore.select_one('.banner-aluno')
+        assert banner is not None, rota
+        foto = banner.find('img')
+        assert foto['src'] == '/static/instrumentos/violao.jpg' and foto['alt'] == ''   # decorativa
+        assert banner.find('h1').get_text(strip=True) == titulo          # o <h1> da página
+        assert 'Violão' in banner.get_text() and 'Foto: Jefferson Santos / Unsplash' in banner.get_text()
+
+    arvore = BeautifulSoup(texto(client.get('/minha-area')), 'html.parser')
+    assert arvore.select_one('.banner-aluno') is None
+    assert arvore.find('h1').get_text(strip=True) == 'Meus dados'
+    cartao = arvore.select_one('img.cartao-foto').find_parent(class_='card')
+    assert cartao.find('img')['src'] == '/static/instrumentos/violao.jpg' and cartao.find('img')['alt'] == ''
+    assert 'Violão' in cartao.find('h2').get_text() and 'Foto: Jefferson Santos / Unsplash' in cartao.get_text()
+    assert client.get('/static/instrumentos/violao.jpg').status_code == 200
 
 
 def test_minha_area_tem_a_cor_do_instrumento(dados, client):

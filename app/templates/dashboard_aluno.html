@@ -1,15 +1,10 @@
 {% extends 'base.html' %}
+{% from '_banner_aluno.html' import banner_do_aluno %}
 
 {% block title %}Meu painel{% endblock %}
 
 {% block style %}
 <style>
-    .painel-cabecalho { border-radius: 12px; }
-    .painel-emoji {
-        width: 64px; height: 64px; flex: 0 0 64px; border-radius: 50%;
-        background: #fff; font-size: 2.2rem; line-height: 1;
-        display: flex; align-items: center; justify-content: center;
-    }
     /* O rótulo do card é o título dele (<h2>), com a aparência discreta de antes. */
     .painel-metrica .rotulo { font-size: 0.85rem; font-weight: 400; color: #6c757d; margin-bottom: 0.25rem; }
     .painel-metrica .valor { font-size: 1.6rem; font-weight: 600; line-height: 1.2; }
@@ -22,19 +17,9 @@
    28/09/2026). Dados pessoais ficam na Minha Área; aulas e observações, em
    Observações pedagógicas. O risco de evasão não aparece: é ferramenta da
    escola, não do aluno. Acessibilidade no padrão de docs/acessibilidade.md. #}
-{% set visual = aluno.instrumento.nome|visual_instrumento %}
-<div class="painel-cabecalho d-flex align-items-center gap-3 p-3 p-md-4 mb-4"
-     style="background: {{ visual.fundo }}; border: 1px solid {{ visual.cor }}40; color: {{ visual.cor }};">
-    <div class="painel-emoji" aria-hidden="true">{{ visual.emoji }}</div>
-    <div>
-        <h1 class="h2 mb-1" style="color: {{ visual.cor }};">Olá, {{ current_user.nome }}</h1>
-        <p class="mb-0">
-            <strong>{{ aluno.instrumento.nome }}</strong>
-            {% if aluno.horario_aula %} · aula fixa: {{ aluno.horario_aula }}{% endif %}
-            · suas mensalidades e pagamentos
-        </p>
-    </div>
-</div>
+{{ banner_do_aluno(aluno, 'Olá, ' ~ current_user.nome,
+                   ('aula fixa: ' ~ aluno.horario_aula ~ ' · ' if aluno.horario_aula else '')
+                   ~ 'suas mensalidades e pagamentos') }}
 
 <div class="row g-3 mb-4">
     <div class="col-sm-4">

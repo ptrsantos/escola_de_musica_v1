@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% from '_banner_aluno.html' import banner_do_aluno %}
 
 {% block title %}Observações pedagógicas{% endblock %}
 
@@ -20,11 +21,9 @@
    anteriores pela navegação. Acessibilidade no padrão de docs/acessibilidade.md. #}
 {% set visual = aluno.instrumento.nome|visual_instrumento %}
 {% set p = ped %}
+{{ banner_do_aluno(aluno, 'Observações pedagógicas', 'professora ' ~ p.professora if p.professora else none) }}
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
-    <div>
-        <h1 class="h2 mb-0">Observações pedagógicas</h1>
-        <p class="text-muted mb-0"><span aria-hidden="true">{{ visual.emoji }}</span> {{ aluno.instrumento.nome }}{% if p.professora %} · professora {{ p.professora }}{% endif %}</p>
-    </div>
+    <p class="text-muted mb-0">O que a professora anotou em cada aula e o que estudar.</p>
     <nav aria-label="Escolher o mês">
         <ul class="pagination mb-0">
             <li class="page-item"><a class="page-link" href="{{ url_for('observacoes', mes=p.mes_anterior) }}" onclick="mostrarSpinner()"><span aria-hidden="true">‹ </span>Mês anterior</a></li>

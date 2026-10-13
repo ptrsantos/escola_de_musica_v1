@@ -2,11 +2,19 @@
 
 {% block title %}Minha Área{% endblock %}
 
+{% block style %}
+<style>
+    /* A foto do instrumento no cartão: faixa baixa, recortada no centro. */
+    .cartao-foto { height: 150px; object-fit: cover; }
+</style>
+{% endblock %}
+
 {% block content %}
 {# Minha Área = dados pessoais do aluno (pedido da direção e do professor,
    28/09/2026: "eles não conseguem ver seus dados"). Só consulta — quem corrige
    é a secretaria. Mensalidades estão no Dashboard; aulas, em Observações
-   pedagógicas. #}
+   pedagógicas. A foto do instrumento aqui fica no cartão, menor (pedido da
+   usuária, 13/10/2026); Dashboard e Observações abrem com o banner largo. #}
 <div class="mb-4">
     <h1 class="h2 mb-0">Meus dados</h1>
     <p class="text-muted mb-0">Seus dados de cadastro na escola. Se algo estiver errado, fale com a secretaria.</p>
@@ -16,13 +24,17 @@
 {% set visual = aluno.instrumento.nome|visual_instrumento %}
 <div class="row g-4">
     <div class="col-md-4">
-        <div class="card shadow-sm h-100" style="background: {{ visual.fundo }}; border: 1px solid {{ visual.cor }}40;">
+        <div class="card shadow-sm h-100 overflow-hidden" style="background: {{ visual.fundo }}; border: 1px solid {{ visual.cor }}40;">
+            {# Foto decorativa (alt vazio): o nome do instrumento está logo abaixo. #}
+            <img class="card-img-top cartao-foto" src="{{ url_for('static', filename=visual.foto) }}" alt=""
+                 width="1600" height="400" decoding="async">
             <div class="card-body text-center">
-                <div class="mb-2" style="font-size: 2.5rem; line-height: 1;" aria-hidden="true">{{ visual.emoji }}</div>
-                <h2 class="h5" style="color: {{ visual.cor }};">{{ aluno.instrumento.nome }}</h2>
+                <h2 class="h5" style="color: {{ visual.cor }};"><span aria-hidden="true">{{ visual.emoji }}</span> {{ aluno.instrumento.nome }}</h2>
                 <p class="mb-1">{% if aluno.horario_aula %}Aula fixa: <strong>{{ aluno.horario_aula }}</strong>{% else %}Sem horário fixo cadastrado{% endif %}</p>
                 {% if professora %}<p class="mb-0">Professora: <strong>{{ professora }}</strong></p>{% endif %}
             </div>
+            {# #495057 e não .text-muted: o cinza padrão dá 3,93:1 sobre o fundo do Teclado; este, ≥ 6,85:1 em todos. #}
+            <p class="card-footer small text-center mb-0 border-0 bg-transparent" style="color: #495057;">Foto: {{ visual.credito }} / Unsplash</p>
         </div>
     </div>
     <div class="col-md-8">
