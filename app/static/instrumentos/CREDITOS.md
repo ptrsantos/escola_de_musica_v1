@@ -1,6 +1,6 @@
 # Fotos dos instrumentos — créditos
 
-Banner do topo das telas do aluno (Dashboard, Minha Área, Observações pedagógicas).
+Banner do topo do Dashboard e das Observações pedagógicas do aluno, e cartão do instrumento na Minha Área.
 Todas do [Unsplash](https://unsplash.com), sob a [Licença Unsplash](https://unsplash.com/license):
 uso livre, inclusive comercial, sem exigir autorização nem crédito. Damos o crédito mesmo assim,
 no próprio banner e aqui.

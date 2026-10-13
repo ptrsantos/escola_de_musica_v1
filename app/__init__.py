@@ -47,7 +47,7 @@ OCUPACAO_CONFIG = {
 
 # Identidade visual por instrumento na área do aluno (pedido da direção,
 # 22/09/2026: "aluno de piano = foto de piano"). Cor e emoji desde 24/09; a
-# foto (banner do topo das telas do aluno) desde 13/10, a pedido de uma
+# foto (banner do Dashboard e das Observações; cartão na Minha Área) desde 13/10, a pedido de uma
 # usuária: "foto ou imagem maior do instrumento, ocupando o espaço todo".
 # Fotos do Unsplash, licença Unsplash (uso livre, sem exigir crédito; damos o
 # crédito mesmo assim) — origem de cada uma em static/instrumentos/CREDITOS.md.
