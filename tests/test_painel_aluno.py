@@ -28,6 +28,22 @@ def test_visual_de_instrumento():
     assert visual_de_instrumento(None) == INSTRUMENTO_VISUAL_PADRAO
 
 
+def test_cada_instrumento_tem_foto_e_credito():
+    """Banner das telas do aluno (13/10): toda foto existe em static/ e está nos
+    créditos; instrumento cadastrado depois cai na foto padrão (partitura)."""
+    import os
+    from app import INSTRUMENTO_VISUAL
+    estatico = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'app', 'static')
+    with open(os.path.join(estatico, 'instrumentos', 'CREDITOS.md'), encoding='utf-8') as f:
+        creditos = f.read()
+    for visual in [*INSTRUMENTO_VISUAL.values(), INSTRUMENTO_VISUAL_PADRAO]:
+        assert os.path.isfile(os.path.join(estatico, visual['foto'])), visual['foto']
+        assert visual['credito'] and visual['credito'] in creditos
+        assert os.path.basename(visual['foto']) in creditos
+    assert visual_de_instrumento('Violão')['foto'] == 'instrumentos/violao.jpg'
+    assert visual_de_instrumento('Ukulele')['foto'] == 'instrumentos/padrao.jpg'
+
+
 def test_proxima_aula_e_rotulo():
     hoje = AGORA.date()
     assert proxima_aula(3, time(14, 0), AGORA) == hoje                 # hoje, ainda não passou
@@ -205,6 +221,21 @@ def test_dashboard_mostra_atraso_e_exige_cadastro_vinculado(dados, app, client):
 def test_login_do_aluno_vai_para_o_dashboard(dados, client):
     r = logar_aluno(client)
     assert r.status_code == 302 and r.headers['Location'].endswith('/dashboard')
+
+
+def test_as_tres_telas_tem_o_banner_com_a_foto(dados, client):
+    from bs4 import BeautifulSoup
+    logar_aluno(client)
+    for rota, titulo in (('/dashboard', 'Olá, Ana Silva'), ('/minha-area', 'Meus dados'),
+                         ('/observacoes', 'Observações pedagógicas')):
+        arvore = BeautifulSoup(texto(client.get(rota)), 'html.parser')
+        banner = arvore.select_one('.banner-aluno')
+        assert banner is not None, rota
+        foto = banner.find('img')
+        assert foto['src'] == '/static/instrumentos/violao.jpg' and foto['alt'] == ''   # decorativa
+        assert banner.find('h1').get_text(strip=True) == titulo          # o <h1> da página
+        assert 'Violão' in banner.get_text() and 'Foto: Jefferson Santos / Unsplash' in banner.get_text()
+    assert client.get('/static/instrumentos/violao.jpg').status_code == 200
 
 
 def test_minha_area_tem_a_cor_do_instrumento(dados, client):

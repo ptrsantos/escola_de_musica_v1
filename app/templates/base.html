@@ -148,6 +148,30 @@
         .spinner-border { width: 4rem; height: 4rem; border-width: 0.3em; color: #0d6efd; }
         .spinner-message { margin-top: 15px; font-size: 1.2rem; color: #0d6efd; font-weight: bold; }
 
+        /* Banner com a foto do instrumento no topo das telas do aluno
+           (_banner_aluno.html, 13/10/2026). O texto fica sobre uma faixa
+           escura: com 60% de preto, branco dá ≥ 5,7:1 mesmo sobre o ponto
+           mais claro da foto; no celular o texto ocupa a largura toda, então
+           a faixa é uniforme. O crédito tem fundo próprio (≥ 4,7:1). */
+        .banner-aluno {
+            position: relative; overflow: hidden; border-radius: 12px;
+            min-height: 180px; display: flex; align-items: flex-end;
+            background: var(--cor-instrumento, #495057); color: #fff;
+        }
+        .banner-aluno-foto { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+        .banner-aluno::after {
+            content: ''; position: absolute; inset: 0;
+            background: linear-gradient(90deg, rgba(0,0,0,.75) 0%, rgba(0,0,0,.6) 55%, rgba(0,0,0,.1) 100%);
+        }
+        .banner-aluno-texto { position: relative; z-index: 1; padding: 1.25rem 1.5rem 1.75rem; text-shadow: 0 1px 3px rgba(0,0,0,.6); }
+        .banner-aluno-texto h1 { color: #fff; }
+        .banner-aluno-credito {
+            position: absolute; z-index: 1; right: .6rem; bottom: .5rem; margin: 0;
+            font-size: .7rem; color: #fff; background: rgba(0,0,0,.55); padding: .1rem .45rem; border-radius: 4px;
+        }
+        @media (min-width: 768px) { .banner-aluno { min-height: 240px; } }
+        @media (max-width: 767.98px) { .banner-aluno::after { background: rgba(0,0,0,.6); } }
+
         /* Quem pede menos movimento no sistema operacional não recebe as
            transições da sidebar nem o zoom dos cartões do painel. */
         @media (prefers-reduced-motion: reduce) {
