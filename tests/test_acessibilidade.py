@@ -13,6 +13,8 @@ docs/acessibilidade.md. A cobertura automatizada de acessibilidade fica em torno
 de 30% dos critérios da WCAG; estes testes servem para impedir regressão, não
 para atestar conformidade.
 """
+import re
+
 import pytest
 from bs4 import BeautifulSoup
 
@@ -1074,3 +1076,54 @@ def test_troca_de_senha_marca_cada_campo_invalido(dados, client):
     # O resumo segue a ordem do formulário.
     assert [a['href'] for a in arvore.select('#resumo-erros a')] == \
         ['#campo-senha_atual', '#campo-nova_senha', '#campo-confirmar_senha']
+
+
+# ---------------------------------------------------------------------------
+# Barra superior do desktop (retorno do Ronaldo, 24/09 e 13/10/2026): os itens
+# do menu davam 2,36:1 sobre o azul e o contorno de foco, 1,43:1 — com o
+# teclado não se via o item em foco. As cores da barra ficam em variáveis CSS
+# (--barra-*) e o contraste é calculado sobre elas.
+# ---------------------------------------------------------------------------
+def _cor(valor, fundo=None):
+    """'#rgb', '#rrggbb' ou 'rgba(r, g, b, a)' -> (r, g, b); com alfa, misturada ao fundo."""
+    valor = valor.strip()
+    if valor.startswith('#'):
+        hexa = valor[1:] if len(valor) == 7 else ''.join(2 * c for c in valor[1:])
+        return tuple(int(hexa[i:i + 2], 16) for i in (0, 2, 4))
+    *rgb, alfa = (float(x) for x in re.findall(r'[\d.]+', valor))
+    return tuple(alfa * c + (1 - alfa) * f for c, f in zip(rgb, fundo))
+
+
+def _contraste(a, b):
+    """Razão de contraste da WCAG entre duas cores (r, g, b)."""
+    def luminancia(rgb):
+        r, g, b = (c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+                   for c in (x / 255 for x in rgb))
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b
+    claro, escuro = sorted((luminancia(a), luminancia(b)), reverse=True)
+    return (claro + 0.05) / (escuro + 0.05)
+
+
+def test_barra_superior_tem_contraste_e_foco_visiveis(dados, client):
+    logar_gestora(client)
+    html = client.get('/inicio').get_data(as_text=True)
+    arvore = BeautifulSoup(html, 'html.parser')
+
+    barra = arvore.select_one('nav.navbar')
+    assert 'barra-superior' in barra['class'] and 'bg-primary' not in barra['class']
+    variaveis = dict(re.findall(r'--(barra-[a-z]+):\s*([^;]+);', html))
+    fundo = _cor(variaveis['barra-fundo'])
+    item = _contraste(_cor(variaveis['barra-item'], fundo), fundo)
+    destaque = _contraste(_cor(variaveis['barra-destaque']), fundo)
+    assert item >= 4.5, f'item do menu com {item:.2f}:1 (mínimo 4,5:1)'
+    assert destaque >= 4.5, f'item atual e contorno de foco com {destaque:.2f}:1'
+
+    # O Bootstrap zera o contorno do .nav-link: a barra tem regra própria.
+    foco = re.search(r'\.barra-superior \.nav-link:focus-visible[^{]*\{([^}]*)\}', html)
+    assert foco and 'outline: 3px solid var(--barra-destaque)' in foco.group(1)
+
+    # A página atual não é indicada só pela cor.
+    atual = re.search(r'\.barra-superior \.nav-link\.active\s*\{([^}]*)\}', html)
+    assert atual and 'font-weight' in atual.group(1) and 'text-decoration: underline' in atual.group(1)
+    ativo = barra.select_one('.nav-link.active')
+    assert ativo.get_text(strip=True) == 'Início' and ativo.get('aria-current') == 'page'

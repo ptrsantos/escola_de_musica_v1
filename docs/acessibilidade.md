@@ -70,7 +70,9 @@ WCAG). Mínimos: 4,5:1 para texto, 3:1 para elementos não textuais.
 | Risco baixo `#0f5132` sobre `#d1e7dd` | 7,21 | passa |
 | Risco médio `#664d03` sobre `#fff3cd` | 7,21 | passa |
 | Risco alto `#842029` sobre `#f8d7da` | 7,08 | passa |
-| Contorno de foco `#0a58ca` | 6,44 | passa (mínimo 3:1) |
+| Contorno de foco `#0a58ca` sobre branco e fundos claros | 6,44 | passa (mínimo 3:1) |
+| Contorno de foco `#0a58ca` sobre a barra superior azul (`#0d6efd`) | 1,43 | **corrigido em 15/10** — na barra o contorno é branco: 6,44 |
+| Itens da barra superior (`.navbar-dark`: branco a 55% sobre `#0d6efd`) | 2,36 | **corrigido em 15/10** — fundo `#0a58ca`, itens em branco a 85%: 5,10; item atual e passar o mouse em branco: 6,44 |
 | `skip-link` `#0a58ca` sobre branco | 6,44 | passa |
 | `text-muted` `#6c757d` sobre branco | 4,69 | passa, com folga pequena |
 | `text-success` / `text-danger` / `text-primary` | 4,53 / 4,53 / 4,50 | passam no limite |
@@ -80,6 +82,16 @@ Observações:
 - `text-primary` e `bg-primary` ficam exatamente em 4,50:1. Qualquer escurecimento
   do fundo ou mudança de tema pode derrubá-los; convém não mexer nesses tons sem
   medir de novo.
+- **Barra superior (15/10/2026).** Achado do Ronaldo (24/09 e 13/10): no desktop
+  não se via, com `Tab`, em que item do menu se estava. O contorno de foco geral
+  (`#0a58ca`) tinha sido medido só sobre branco; sobre a barra azul dava 1,43:1,
+  e o Bootstrap ainda zera o contorno do `.nav-link` (`outline: 0`). A barra
+  deixou o `bg-primary` pela classe `barra-superior` (cores em variáveis
+  `--barra-*` no `base.html`), tem contorno de foco branco próprio e marca a
+  página atual com negrito e sublinhado, além da cor (1.4.1). No celular a
+  navegação é pela barra lateral clara, que já passava. Teste:
+  `test_barra_superior_tem_contraste_e_foco_visiveis` (calcula o contraste a
+  partir das variáveis).
 - `#ffc107` permanece em uso apenas em **ícones decorativos** (`aria-hidden="true"`,
   sempre acompanhados de texto) e em `badge text-bg-warning`, que o Bootstrap
   renderiza com texto escuro. Nenhum texto depende mais dessa cor.
@@ -204,7 +216,7 @@ aqui. Todos exigem execução manual por uma pessoa.
 | Qualidade dos nomes acessíveis | 4.1.2 | ouvir os rótulos no NVDA; o teste garante presença, não utilidade |
 | Anúncio real de erros e status | 4.1.3 | submeter formulário inválido com NVDA ligado |
 | Foco ao reabrir modal com erro | 2.4.3 | validar que o foco cai no resumo e que `Esc` devolve ao gatilho |
-| Contraste em hover, foco e desabilitado | 1.4.11 | inspecionar estados no navegador; só o estado normal foi medido |
+| Contraste em hover, foco e desabilitado | 1.4.11 | inspecionar estados no navegador; só o estado normal foi medido (exceto a barra superior, medida em 15/10 — ver §2) |
 | Zoom de 200% e 400% | 1.4.4, 1.4.10 | verificar perda de conteúdo e rolagem em dois eixos |
 | Viewport de 320 px | 1.4.10 | sidebar off-canvas, tabelas e modais |
 | Leitura das tabelas equivalentes | 1.1.1 | conferir no NVDA se `<details>` é encontrado e navegável |
@@ -223,7 +235,8 @@ aqui. Todos exigem execução manual por uma pessoa.
 
 | Data | Quem | Item verificado | Resultado |
 |---|---|---|---|
-| | | | |
+| 24/09 e 13/10/2026 | Ronaldo (grupo) | navegação por teclado no menu do desktop | **falha:** com `Tab` não se via o item em foco; cores dos itens fracas (no celular, ok) |
+| 15/10/2026 | Flávio | o mesmo, depois da correção | contorno branco visível em todos os itens da barra (1366 px e 375 px, menu recolhido aberto); "Sair" do menu do usuário, em fundo branco, segue com o contorno `#0a58ca` |
 
 ## 5. Dívidas conhecidas
 
