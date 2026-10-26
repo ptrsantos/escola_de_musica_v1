@@ -544,11 +544,13 @@ def register_routes(app):
         alunos = consulta.all()
         pontuar(alunos)   # modelo de evasão em lote (3 consultas para todos)
 
-        # Distribuição de alunos por instrumento (para o gráfico de pizza)
-        q_instrumentos = db.session.query(Instrumento.nome, func.count(Aluno.id)).join(Aluno)
-        if escopo is not None:
-            q_instrumentos = q_instrumentos.filter(Aluno.id.in_(escopo))
-        por_instrumento = q_instrumentos.group_by(Instrumento.nome).all()
+        # Distribuição de alunos por instrumento (gráfico de pizza) — só da
+        # gestora: a direção pediu que o painel da professora não traga a
+        # contagem de alunos por instrumento (e-mail da Ariã, 26/10/2026).
+        por_instrumento = []
+        if gestora:
+            por_instrumento = (db.session.query(Instrumento.nome, func.count(Aluno.id))
+                               .join(Aluno).group_by(Instrumento.nome).all())
         dados_instrumentos = {
             'nomes': [nome for nome, _ in por_instrumento],
             'valores': [qtd for _, qtd in por_instrumento],
@@ -672,10 +674,8 @@ def register_routes(app):
             atualizar_status_vencidos()
 
         consulta = Aluno.query.filter_by(status='ativo')
-        q_instrumentos = db.session.query(Instrumento.nome, func.count(Aluno.id)).join(Aluno)
         if escopo is not None:
             consulta = consulta.filter(Aluno.id.in_(escopo))
-            q_instrumentos = q_instrumentos.filter(Aluno.id.in_(escopo))
 
         alunos = consulta.all()
         pontuar(alunos)
@@ -683,14 +683,15 @@ def register_routes(app):
         for a in alunos:
             riscos[a.risco] += 1
 
-        dados = {
-            'risco': riscos,
-            'instrumentos': dict(q_instrumentos.group_by(Instrumento.nome).all()),
-        }
-        if gestora:   # inadimplência é da escola: fora da resposta da professora
+        dados = {'risco': riscos}
+        # Inadimplência e alunos por instrumento são da gestora: fora da
+        # resposta da professora (direção, 22/09 e 26/10/2026).
+        if gestora:
             inadimplentes = sum(1 for a in alunos if a.inadimplente)
             dados['financeiro'] = {'Adimplentes': len(alunos) - inadimplentes,
                                    'Inadimplentes': inadimplentes}
+            dados['instrumentos'] = dict(db.session.query(Instrumento.nome, func.count(Aluno.id))
+                                         .join(Aluno).group_by(Instrumento.nome).all())
         return jsonify(dados)
 
     # =================================================================

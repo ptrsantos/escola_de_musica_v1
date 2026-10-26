@@ -9,6 +9,8 @@ o nome do usuário; ver ``routes.ids_alunos_da_professora``).
 No conjunto ``dados``: Ana e Bruno tiveram aula com a professora Flávia; Carla e
 Diego, não.
 """
+from bs4 import BeautifulSoup
+
 from app import db
 from app.models import Aula
 
@@ -95,7 +97,12 @@ def test_dashboard_da_professora_nao_tem_financeiro(dados, client):
                      'Situação financeira', 'Recebido - últimos 6 meses',
                      'Alunos que pedem atenção']:
         assert proibido not in html, proibido
-    for esperado in ['Meus alunos ativos', 'Alunos por instrumento', 'Risco de evasão',
+    # "Alunos por instrumento" saiu do painel dela (e-mail da Ariã, 26/10/2026):
+    # nem o cartão, nem o gráfico, nem os números no JSON da página.
+    titulos = [t.get_text(strip=True) for t in BeautifulSoup(html, 'html.parser').find_all('h2')]
+    assert 'Alunos por instrumento' not in titulos
+    assert 'id="instrumentoChart"' not in html and 'const dadosInstrumentos' not in html
+    for esperado in ['Meus alunos ativos', 'Risco de evasão',
                      'Presença por instrumento', 'Alunos com mais faltas',
                      'Aulas por dia da semana', 'Ocupação de horários']:
         assert esperado in html, esperado
@@ -106,8 +113,6 @@ def test_dashboard_da_professora_conta_so_os_alunos_dela(dados, client):
     logar_professora(client)
     html = texto(client.get('/dashboard'))
     assert '<p class="h2 text-primary mb-0">2</p>' in html
-    # os dados dos gráficos saem em JSON com acento escapado (tojson)
-    assert 'Piano' in html and r'Viol\u00e3o' in html  # instrumentos de Ana e Bruno
     assert 'Bateria' not in html                       # instrumento da Carla
 
 
@@ -122,13 +127,13 @@ def test_dashboard_da_gestora_continua_completo(dados, client):
 def test_api_dashboard_data_sem_financeiro_para_a_professora(dados, client):
     logar_professora(client)
     dados_json = client.get('/api/dashboard-data').get_json()
-    assert 'financeiro' not in dados_json
+    assert 'financeiro' not in dados_json and 'instrumentos' not in dados_json
     assert sum(dados_json['risco'].values()) == 2          # só Ana e Bruno
-    assert set(dados_json['instrumentos']) == {'Violão', 'Piano'}
 
     client.get('/logout')
     logar_gestora(client)
-    assert 'financeiro' in client.get('/api/dashboard-data').get_json()
+    dados_json = client.get('/api/dashboard-data').get_json()
+    assert 'financeiro' in dados_json and 'instrumentos' in dados_json
 
 
 # ---------------------------------------------------------------------------
