@@ -173,23 +173,22 @@
                 </div>
             </div>
         </div>
-        {% endif %}
-        <div class="{{ 'col-md-4' if gestora else 'col-md-6' }}">
+        {# Alunos por instrumento: só no painel da gestora. A direção pediu que a
+           professora não tenha essa contagem (e-mail da Ariã, 26/10/2026). #}
+        <div class="col-md-4">
             <div class="card shadow-sm border-0 h-100">
                 <div class="card-header bg-white py-3"><h2 class="h5 mb-0"><i class="fas fa-chart-pie me-2 text-warning" aria-hidden="true"></i>Alunos por instrumento</h2></div>
                 <div class="card-body">
                     {% if dados_instrumentos.nomes %}
                     <figure class="mb-0">
-                        {% if gestora %}
                         <div class="grafico-container">
                         <canvas id="instrumentoChart" role="img"
                                 aria-label="Gráfico de pizza com a distribuição de alunos entre {{ dados_instrumentos.nomes|length }} instrumento(s). A contagem por instrumento está na tabela abaixo."
                                 aria-describedby="desc-instrumento"></canvas>
                         </div>
-                        {% endif %}
                         <figcaption class="mt-2">
                             <p class="visually-hidden" id="desc-instrumento">{{ descricoes.instrumento }}</p>
-                            <details {% if not gestora %}open{% endif %}>
+                            <details>
                                 <summary>Ver dados em tabela</summary>
                                 <table class="table table-sm mt-2 mb-0">
                                     <caption class="visually-hidden">Quantidade de alunos por instrumento</caption>
@@ -209,7 +208,6 @@
                 </div>
             </div>
         </div>
-    {% if gestora %}
     </div>
 
     <!-- Risco de evasão -->
@@ -430,9 +428,9 @@
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const dadosInstrumentos = {{ dados_instrumentos|tojson }};
     const riscos = {{ riscos|tojson }};
-    {% if current_user.papel == 'gestora' %}const dadosRecebido = {{ dados_recebido|tojson }};{% endif %}
+    {% if current_user.papel == 'gestora' %}const dadosRecebido = {{ dados_recebido|tojson }};
+    const dadosInstrumentos = {{ dados_instrumentos|tojson }};{% endif %}
 
     // Requisito de movimento: quem pede menos movimento no sistema operacional
     // não recebe a animação de entrada dos gráficos. O @media CSS não alcança
